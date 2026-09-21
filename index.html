@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>公文截圖命名助手</title>
+<style>
+:root{
+  --bg:#f5f6f8; --card:#fff; --ink:#1c2330; --sub:#5d6778; --line:#dde1e8;
+  --accent:#1f5fbf; --accent-ink:#fff; --ok:#12703a; --warn:#b45309; --out-bg:#eef4ff;
+}
+@media (prefers-color-scheme: dark){
+  :root{--bg:#12161d; --card:#1b212b; --ink:#e7ebf2; --sub:#9aa5b8; --line:#2c3543;
+    --accent:#5b9bff; --accent-ink:#0b1220; --ok:#5fd28f; --warn:#f0a94a; --out-bg:#18263d;}
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:16px/1.55 "Microsoft JhengHei","Noto Sans TC",system-ui,sans-serif}
+.wrap{max-width:1100px;margin:0 auto;padding:20px 16px 60px}
+h1{font-size:22px;margin:0 0 4px}
+.lead{color:var(--sub);margin:0 0 18px;font-size:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:16px;align-items:start}
+@media(max-width:820px){.grid{grid-template-columns:1fr}}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:12px}
+.seg button{border:0;background:transparent;color:var(--ink);padding:8px 14px;font:inherit;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+#drop{border:2px dashed var(--line);border-radius:12px;min-height:260px;display:flex;
+  align-items:center;justify-content:center;text-align:center;padding:12px;cursor:pointer;
+  color:var(--sub);position:relative;overflow:hidden;outline:none}
+#drop:focus,#drop.over{border-color:var(--accent);background:var(--out-bg)}
+#drop img{max-width:100%;max-height:420px;display:block;margin:0 auto;border-radius:6px}
+#drop b{color:var(--ink);font-size:18px;display:block;margin-bottom:6px}
+.status{margin-top:10px;font-size:14px;color:var(--sub);min-height:22px}
+.status.err{color:#c0392b}.status.ok{color:var(--ok)}
+.bar{height:6px;background:var(--line);border-radius:3px;overflow:hidden;margin-top:6px;display:none}
+.bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s}
+label{display:block;font-size:13px;color:var(--sub);margin:10px 0 3px}
+input[type=text],input[type=number],input[type=password],textarea,select{
+  width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);
+  color:var(--ink);font:inherit}
+textarea{resize:vertical;min-height:70px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.row2.r3{grid-template-columns:1fr 1fr 90px}
+@media(max-width:520px){.row2,.row2.r3{grid-template-columns:1fr}}
+.out{margin-top:16px;background:var(--out-bg);border:1px solid var(--accent);border-radius:12px;padding:14px}
+.out .name{font-size:18px;font-weight:600;word-break:break-all;user-select:all;min-height:28px}
+.out .len{font-size:12px;color:var(--sub);margin-top:4px}
+button.primary{margin-top:10px;background:var(--accent);color:var(--accent-ink);border:0;border-radius:8px;
+  padding:9px 18px;font:inherit;font-weight:600;cursor:pointer}
+button.ghost{background:transparent;border:1px solid var(--line);color:var(--ink);border-radius:8px;
+  padding:5px 10px;font:inherit;font-size:13px;cursor:pointer}
+.chk{display:flex;align-items:center;gap:6px;font-size:14px;color:var(--ink);margin:10px 0 0}
+details{margin-top:16px}
+summary{cursor:pointer;color:var(--sub);font-size:14px}
+.hist{list-style:none;margin:8px 0 0;padding:0}
+.hist li{display:flex;gap:8px;align-items:center;padding:6px 0;border-top:1px solid var(--line);font-size:13px}
+.hist li span{flex:1;word-break:break-all}
+.hint{font-size:12px;color:var(--sub);margin-top:4px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>公文截圖命名助手</h1>
+  <p class="lead">把公文截圖貼上（Ctrl+V），自動辨識欄位並產出檔案名稱。辨識結果可直接修改，檔名會即時更新。</p>
+
+  <div class="grid">
+    <!-- 左：截圖 -->
+    <div class="card">
+      <div class="seg" role="group" aria-label="截圖格式">
+        <button id="m1" aria-pressed="false">方法一：PDF 格式</button>
+        <button id="m2" aria-pressed="true">方法二：公文系統</button>
+      </div>
+      <div id="drop" tabindex="0" title="點一下後按 Ctrl+V，或拖曳圖片進來">
+        <div id="dropHint"><b>在此貼上截圖（Ctrl+V）</b>也可以拖曳圖片，或點一下選擇檔案</div>
+      </div>
+      <input type="file" id="file" accept="image/*" hidden>
+      <div class="status" id="status"></div>
+      <div class="bar" id="bar"><i></i></div>
+
+      <details>
+        <summary>設定（辨識方式、API 金鑰、去贅詞清單）</summary>
+        <label for="engine">辨識方式</label>
+        <select id="engine">
+          <option value="auto">自動（有金鑰用 Claude，否則用內建 OCR）</option>
+          <option value="claude">Claude 視覺辨識（較準，需 API 金鑰）</option>
+          <option value="ocr">內建 OCR（免費，中文數字較易錯）</option>
+        </select>
+        <label for="key">Anthropic API 金鑰（只存在本機瀏覽器，不會上傳到其他地方）</label>
+        <input type="password" id="key" placeholder="sk-ant-..." autocomplete="off">
+        <label for="noise">要從主旨移除的贅詞（一行一個）</label>
+        <textarea id="noise"></textarea>
+        <div class="chk"><input type="checkbox" id="autocopy" checked><label for="autocopy" style="margin:0;color:var(--ink)">辨識完成後自動複製檔名</label></div>
+      </details>
+    </div>
+
+    <!-- 右：欄位與結果 -->
+    <div class="card">
+      <div class="row2">
+        <div><label for="fSend" id="lSend">來文日期</label><input type="text" id="fSend" placeholder="115/04/02"></div>
+        <div><label for="fRecv">收文日期</label><input type="text" id="fRecv" placeholder="115/04/07"></div>
+      </div>
+      <div class="row2 r3">
+        <div><label for="fRef">來文字號</label><input type="text" id="fRef" placeholder="麗字第1150400048號"></div>
+        <div><label for="fDoc">公文文號</label><input type="text" id="fDoc" placeholder="P11150011116"></div>
+        <div><label for="fAtt">附件件數</label><input type="number" id="fAtt" min="0" value="0"></div>
+      </div>
+      <label for="fSubj">主旨（原文）</label>
+      <textarea id="fSubj" placeholder="檢送「臺中市巨蛋體育館興建工程」B3F層鋼筋工程施工圖…資料，惠請核復。"></textarea>
+      <div class="chk"><input type="checkbox" id="omitSame"><label for="omitSame" style="margin:0;color:var(--ink)">來文日期與收文日期相同時，省略「收訖」</label></div>
+
+      <div class="out">
+        <div class="hint" style="margin:0 0 4px">檔案名稱</div>
+        <div class="name" id="result">（尚無內容）</div>
+        <div class="len" id="len"></div>
+        <button class="primary" id="copy">複製檔名</button>
+      </div>
+
+      <details open>
+        <summary>最近處理紀錄</summary>
+        <ul class="hist" id="hist"></ul>
+      </details>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const DEFAULT_NOISE = ['請查照','詳如說明','敬請查核','敬請查照','敬請核備','惠請核復','敬請核復'];
+let mode = 2;
+let currentBlob = null;
+
+/* ---------- 設定存取 ---------- */
+const store = {
+  get(k,d){ try{ const v=localStorage.getItem(k); return v==null?d:v; }catch(e){ return d; } },
+  set(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
+};
+
+/* ---------- 日期 ---------- */
+const pad = (n,w=2)=>String(n).padStart(w,'0');
+function parseDate(s){
+  s = (s||'').trim();
+  let m = s.match(/(?:民國)?\s*(\d{2,3})\s*[\/.\-年]\s*(\d{1,2})\s*[\/.\-月]\s*(\d{1,2})/);
+  if(!m) m = s.match(/^(\d{3})(\d{2})(\d{2})$/);
+  if(!m) return null;
+  return {y:+m[1], m:+m[2], d:+m[3]};
+}
+const full = d => pad(d.y,3)+pad(d.m)+pad(d.d);
+const mmdd = d => pad(d.m)+pad(d.d);
+
+/* ---------- 主旨優化 ---------- */
+function cleanSubject(raw){
+  let s = (raw||'').replace(/[\r\n]+/g,'');
+  s = s.replace(/\s+(?=[㐀-鿿（(「])|(?<=[㐀-鿿）)」，。])\s+/g,'');   // 中文間多餘空白
+  // 工程案名（含後面括號內的地址），連同引號一起移除
+  s = s.replace(/[「『"“]?(?:(?:臺|台)中市)?巨蛋(?:體育館|體育場)?(?:興建)?工程(?:[（(][^）)]*[）)])?[」』"”]?/g,'');
+  // 協力廠商說明
+  s = s.replace(/共同承攬商.*?提送之/g,'');
+  s = s.replace(/(?:股份)?有限公司/g,'');
+  // 贅詞
+  const noise = $('noise').value.split('\n').map(x=>x.trim()).filter(Boolean)
+    .sort((a,b)=>b.length-a.length);
+  for(const w of noise){ s = s.split(w).join(''); }
+  s = s.replace(/[「」『』]/g,'');
+  s = s.replace(/[\\\/:*?"<>|]/g,'');                       // 檔名不允許的字元
+  s = s.replace(/[，,、;；]{2,}/g,'，').replace(/^[，,、;；。.\s]+|[，,、;；。.\s]+$/g,'');
+  return s;
+}
+
+/* ---------- 組檔名 ---------- */
+function buildName(){
+  const send = parseDate($('fSend').value), recv = parseDate($('fRecv').value);
+  const ref = $('fRef').value.trim().replace(/\s+/g,''), doc = $('fDoc').value.trim().replace(/\s+/g,'');
+  const att = parseInt($('fAtt').value,10)||0;
+  let subj = cleanSubject($('fSubj').value);
+
+  const main = send || recv;
+  let date = main ? full(main) : '';
+  if(main && recv && (main!==recv) && !(main.y===recv.y&&main.m===recv.m&&main.d===recv.d && $('omitSame').checked)){
+    date += `(${mmdd(recv)}收訖)`;
+  }
+
+  if(mode===1){
+    subj += att>0 ? '(有附件)' : '(無附件)';
+  }else if(att>0 && !subj.includes('(附件)') && !subj.includes('（附件）')){
+    subj += '(附件)';
+  }
+  const name = [date, ref, doc, subj].filter(Boolean).join('-')
+    .replace(/[\\\/:*?"<>|]/g,'');
+  return name;
+}
+
+function render(){
+  const n = buildName();
+  $('result').textContent = n || '（尚無內容）';
+  $('len').textContent = n ? `${n.length} 字` : '';
+}
+
+/* ---------- 欄位擷取（OCR 文字） ---------- */
+function extractFromText(text){
+  const t = text.replace(/[ \t　]+/g,'');
+  const out = {};
+  const isSystem = /收文資訊|公文文號|附件件數|來文機關/.test(t);
+  out.mode = isSystem ? 2 : 1;
+  const mDoc = t.match(/P\d{9,12}/i); if(mDoc) out.doc = mDoc[0].toUpperCase();
+  const mRef = t.match(/(?:來文|發文)?字號[:：]?([一-鿿]{1,8}字第\d{6,}號)/) || t.match(/([一-鿿]{1,8}字第\d{6,}號)/);
+  if(mRef) out.ref = mRef[1];
+  if(isSystem){
+    let m = t.match(/來文日期[:：]?(\d{2,3}[\/.]\d{1,2}[\/.]\d{1,2})/); if(m) out.send = m[1];
+    m = t.match(/收文日期[:：]?(\d{2,3}[\/.]\d{1,2}[\/.]\d{1,2})/); if(m) out.recv = m[1];
+    m = t.match(/附件件數[:：]?(\d+)/); if(m) out.att = +m[1];
+    m = t.match(/主旨[:：]?([\s\S]+?)(?:來文機關|主辦人員|限辦日期|簽核|決行|補正|$)/); if(m) out.subj = m[1];
+  }else{
+    let m = t.match(/發文日期[:：]?中華民國(\d{2,3})年(\d{1,2})月(\d{1,2})日/); if(m) out.send = `${m[1]}/${m[2]}/${m[3]}`;
+    m = t.match(/收文[:：]?(\d{2,3}[\/.]\d{1,2}[\/.]\d{1,2})/); if(m) out.recv = m[1];
+    m = t.match(/主旨[:：]?([\s\S]+?)(?:說明[:：]|正本[:：]|副本[:：]|$)/); if(m) out.subj = m[1];
+    m = t.match(/附件[:：]([^\n]+)/);
+    if(m) out.att = /無/.test(m[1]) ? 0 : 1;
+  }
+  return out;
+}
+
+/* ---------- 辨識：內建 OCR ---------- */
+function loadScript(src){
+  return new Promise((res,rej)=>{
+    if(window.Tesseract) return res();
+    const s=document.createElement('script'); s.src=src; s.onload=res; s.onerror=()=>rej(new Error('無法載入 OCR 元件，請確認網路連線'));
+    document.head.appendChild(s);
+  });
+}
+async function upscale(blob){                    // 小圖放大後 OCR 較準
+  const bmp = await createImageBitmap(blob);
+  if(bmp.width>=1400) return blob;
+  const k = Math.min(3, 1400/bmp.width), c = document.createElement('canvas');
+  c.width = Math.round(bmp.width*k); c.height = Math.round(bmp.height*k);
+  const g = c.getContext('2d'); g.imageSmoothingQuality='high'; g.drawImage(bmp,0,0,c.width,c.height);
+  return new Promise(r=>c.toBlob(r,'image/png'));
+}
+async function runOCR(blob){
+  setStatus('載入 OCR 元件…（首次需下載中文語言包，約 10–20 秒）');
+  await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js');
+  const r = await Tesseract.recognize(await upscale(blob),'chi_tra',{logger:m=>{
+    if(m.progress!=null){ setProgress(m.progress); setStatus(`OCR 辨識中… ${m.status} ${Math.round(m.progress*100)}%`); }
+  }});
+  return extractFromText(r.data.text);
+}
+
+/* ---------- 辨識：Claude ---------- */
+const blobToB64 = b => new Promise((res,rej)=>{ const f=new FileReader(); f.onload=()=>res(String(f.result).split(',')[1]); f.onerror=rej; f.readAsDataURL(b); });
+async function runClaude(blob){
+  setStatus('Claude 辨識中…'); setProgress(.4);
+  const data = await blobToB64(blob);
+  const prompt = `這是一份台灣公文的截圖（可能是公文 PDF 截圖，或公文系統的「收文資訊」畫面）。請逐字擷取下列欄位，不要改寫、不要補字，只回傳 JSON：
+{"format":"pdf 或 system",
+ "send":"來文日期／發文日期，照原樣（例：115/04/02 或 113年8月19日）",
+ "recv":"收文日期，照原樣（PDF 為右下角章戳「收文:」後的日期；系統畫面為「收文日期」欄）",
+ "ref":"來文字號（發文字號），完整含機關字與號",
+ "doc":"公文文號（例 P11150011116，PDF 為條碼下方文字）",
+ "att":附件件數的整數（系統畫面看「附件件數」；PDF 看「附件：」，無附件為 0，有則至少 1）,
+ "subj":"主旨全文（不含「主旨：」二字），逐字照抄"}
+看不到的欄位用空字串，att 看不到用 0。`;
+  const resp = await fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',
+    headers:{
+      'content-type':'application/json',
+      'x-api-key':$('key').value.trim(),
+      'anthropic-version':'2023-06-01',
+      'anthropic-dangerous-direct-browser-access':'true'
+    },
+    body:JSON.stringify({
+      model:'claude-sonnet-5', max_tokens:1500,
+      messages:[{role:'user',content:[
+        {type:'image',source:{type:'base64',media_type:blob.type||'image/png',data}},
+        {type:'text',text:prompt}
+      ]}]
+    })
+  });
+  if(!resp.ok){
+    let msg=''; try{ msg=(await resp.json()).error.message; }catch(e){}
+    throw new Error(`Claude 回應錯誤 ${resp.status}：${msg}`);
+  }
+  const j = await resp.json();
+  const txt = (j.content||[]).map(c=>c.text||'').join('');
+  const m = txt.match(/\{[\s\S]*\}/);
+  if(!m) throw new Error('Claude 回傳格式無法解析');
+  const o = JSON.parse(m[0]);
+  return {mode:o.format==='system'?2:1, send:o.send, recv:o.recv, ref:o.ref, doc:o.doc, att:+o.att||0, subj:o.subj};
+}
+
+/* ---------- 流程 ---------- */
+function setStatus(t,cls=''){ const s=$('status'); s.textContent=t; s.className='status '+cls; }
+function setProgress(p){ const b=$('bar'); b.style.display=p==null?'none':'block'; if(p!=null) b.firstElementChild.style.width=(p*100)+'%'; }
+
+function setMode(m){
+  mode = m;
+  $('m1').setAttribute('aria-pressed', m===1);
+  $('m2').setAttribute('aria-pressed', m===2);
+  $('lSend').textContent = m===1 ? '發文日期（公文內）' : '來文日期';
+  $('omitSame').checked = (m===2);
+  render();
+}
+
+function fill(o){
+  if(o.mode) setMode(o.mode);
+  $('fSend').value = o.send||'';
+  $('fRecv').value = o.recv||'';
+  $('fRef').value  = o.ref||'';
+  $('fDoc').value  = o.doc||'';
+  $('fAtt').value  = o.att||0;
+  $('fSubj').value = (o.subj||'').replace(/\s*\n\s*/g,'');
+  render();
+}
+
+async function handleImage(blob){
+  if(!blob) return;
+  currentBlob = blob;
+  const url = URL.createObjectURL(blob);
+  $('drop').innerHTML = `<img alt="已貼上的截圖" src="${url}">`;
+  const eng = $('engine').value, hasKey = !!$('key').value.trim();
+  const useClaude = eng==='claude' || (eng==='auto' && hasKey);
+  if(eng==='claude' && !hasKey){ setStatus('請先到「設定」輸入 API 金鑰，或改用內建 OCR','err'); return; }
+  try{
+    setProgress(useClaude?.2:0);
+    const o = useClaude ? await runClaude(blob) : await runOCR(blob);
+    fill(o);
+    setProgress(null);
+    const name = buildName();
+    if(name){
+      addHistory(name);
+      let copied=false;
+      if($('autocopy').checked){ copied = await copyText(name); }
+      setStatus(`辨識完成${copied?'，已複製檔名':''}。請逐字核對欄位後再使用。`,'ok');
+    }else setStatus('沒有辨識到內容，請換一張截圖或手動輸入','err');
+  }catch(e){
+    setProgress(null);
+    setStatus(e.message||String(e),'err');
+  }
+}
+
+async function copyText(t){
+  try{ await navigator.clipboard.writeText(t); return true; }
+  catch(e){
+    try{
+      const ta=document.createElement('textarea'); ta.value=t; document.body.appendChild(ta); ta.select();
+      const ok=document.execCommand('copy'); ta.remove(); return ok;
+    }catch(e2){ return false; }
+  }
+}
+
+/* ---------- 紀錄 ---------- */
+let history = [];
+try{ history = JSON.parse(store.get('gw_hist','[]')); }catch(e){}
+function addHistory(n){
+  history = [n, ...history.filter(x=>x!==n)].slice(0,20);
+  store.set('gw_hist', JSON.stringify(history));
+  renderHistory();
+}
+function renderHistory(){
+  const ul=$('hist'); ul.innerHTML='';
+  if(!history.length){ ul.innerHTML='<li><span style="color:var(--sub)">（無）</span></li>'; return; }
+  history.forEach(n=>{
+    const li=document.createElement('li'), sp=document.createElement('span'), b=document.createElement('button');
+    sp.textContent=n; b.className='ghost'; b.textContent='複製';
+    b.onclick=async()=>{ const ok=await copyText(n); b.textContent=ok?'已複製':'失敗'; setTimeout(()=>b.textContent='複製',1200); };
+    li.append(sp,b); ul.appendChild(li);
+  });
+}
+
+/* ---------- 事件 ---------- */
+document.addEventListener('paste',e=>{
+  const items=[...(e.clipboardData?.items||[])].filter(i=>i.type.startsWith('image/'));
+  if(!items.length) return;
+  e.preventDefault();
+  handleImage(items[items.length-1].getAsFile());     // 只處理最後一張
+});
+const drop=$('drop');
+drop.addEventListener('click',()=>$('file').click());
+$('file').addEventListener('change',e=>{ handleImage(e.target.files[0]); e.target.value=''; });
+['dragover','dragenter'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('over');}));
+['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('over');}));
+drop.addEventListener('drop',e=>{ const f=[...e.dataTransfer.files].filter(f=>f.type.startsWith('image/')).pop(); handleImage(f); });
+
+['fSend','fRecv','fRef','fDoc','fAtt','fSubj','omitSame'].forEach(id=>$(id).addEventListener('input',render));
+$('noise').addEventListener('input',()=>{ store.set('gw_noise',$('noise').value); render(); });
+$('key').addEventListener('input',()=>store.set('gw_key',$('key').value));
+$('engine').addEventListener('change',()=>store.set('gw_engine',$('engine').value));
+$('autocopy').addEventListener('change',()=>store.set('gw_autocopy',$('autocopy').checked?'1':'0'));
+$('m1').onclick=()=>setMode(1);
+$('m2').onclick=()=>setMode(2);
+$('copy').onclick=async()=>{
+  const ok=await copyText(buildName());
+  $('copy').textContent=ok?'已複製 ✓':'複製失敗，請手動選取'; setTimeout(()=>$('copy').textContent='複製檔名',1400);
+};
+
+/* ---------- 初始化 ---------- */
+$('noise').value = store.get('gw_noise', DEFAULT_NOISE.join('\n'));
+$('key').value = store.get('gw_key','');
+$('engine').value = store.get('gw_engine','auto');
+$('autocopy').checked = store.get('gw_autocopy','1')==='1';
+setMode(2);
+renderHistory();
+</script>
+</body>
+</html>
