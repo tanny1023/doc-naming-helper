@@ -197,14 +197,27 @@ function render(){
 }
 
 /* ---------- 欄位擷取（OCR 文字） ---------- */
+function findRef(flat, isSystem){
+  const fmt = m => `${m[1]}字第${m[2]}號`;
+  // 1) 「來文字號／發文字號」標籤後面
+  let m = flat.match(/(?:來文|發文)?字號[:：;]?([一-鿿]{1,8}?)字第*(\d{6,})號?/);
+  if(m) return fmt(m);
+  // 2) 全文找「XX字第NNN號」；PDF 只看「主旨」之前，避免抓到說明文字裡引用的其他公文
+  const head = isSystem ? flat : flat.split('主旨')[0];
+  const all = [...head.matchAll(/([一-鿿]{1,8}?)字第*(\d{6,})號?/g)];
+  if(all.length) return fmt(all[0]);
+  // 3) 標籤後直接是數字（機關字被 OCR 吃掉）
+  m = flat.match(/(?:來文|發文)?字號[:：;]?[^\d]{0,10}(\d{9,})/);
+  return m ? m[1] : '';
+}
 function extractFromText(text){
   const t = text.replace(/[ \t　]+/g,'');
   const out = {};
   const isSystem = /收文資訊|公文文號|附件件數|來文機關/.test(t);
   out.mode = isSystem ? 2 : 1;
   const mDoc = t.match(/P\d{9,12}/i); if(mDoc) out.doc = mDoc[0].toUpperCase();
-  const mRef = t.match(/(?:來文|發文)?字號[:：]?([一-鿿]{1,8}字第\d{6,}號)/) || t.match(/([一-鿿]{1,8}字第\d{6,}號)/);
-  if(mRef) out.ref = mRef[1];
+  const ref = findRef(text.replace(/\s+/g,''), isSystem);   // 換行、空白、「第」重複都容忍
+  if(ref) out.ref = ref;
   if(isSystem){
     let m = t.match(/來文日期[:：]?(\d{2,3}[\/.]\d{1,2}[\/.]\d{1,2})/); if(m) out.send = m[1];
     m = t.match(/收文日期[:：]?(\d{2,3}[\/.]\d{1,2}[\/.]\d{1,2})/); if(m) out.recv = m[1];
@@ -329,7 +342,10 @@ async function handleImage(blob){
       addHistory(name);
       let copied=false;
       if($('autocopy').checked){ copied = await copyText(name); }
-      setStatus(`辨識完成${copied?'，已複製檔名':''}。請逐字核對欄位後再使用。`,'ok');
+      const miss = [['fSend','日期'],['fRef','來文字號'],['fDoc','公文文號'],['fSubj','主旨']]
+        .filter(([id])=>!$(id).value.trim()).map(x=>x[1]);
+      if(miss.length) setStatus(`未辨識到：${miss.join('、')}，請手動補上（或改用 Claude 辨識較準）。`,'err');
+      else setStatus(`辨識完成${copied?'，已複製檔名':''}。請逐字核對欄位後再使用。`,'ok');
     }else setStatus('沒有辨識到內容，請換一張截圖或手動輸入','err');
   }catch(e){
     setProgress(null);
