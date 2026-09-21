@@ -82,12 +82,17 @@ summary{cursor:pointer;color:var(--sub);font-size:14px}
         <summary>設定（辨識方式、API 金鑰、去贅詞清單）</summary>
         <label for="engine">辨識方式</label>
         <select id="engine">
-          <option value="auto">自動（有金鑰用 Claude，否則用內建 OCR）</option>
+          <option value="auto">自動（有 Claude 金鑰用 Claude，其次 Gemini，否則內建 OCR）</option>
           <option value="claude">Claude 視覺辨識（較準，需 API 金鑰）</option>
+          <option value="gemini">Gemini 視覺辨識（需 Google AI Studio 金鑰）</option>
           <option value="ocr">內建 OCR（免費，中文數字較易錯）</option>
         </select>
         <label for="key">Anthropic API 金鑰（只存在本機瀏覽器，不會上傳到其他地方）</label>
         <input type="password" id="key" placeholder="sk-ant-..." autocomplete="off">
+        <label for="gkey">Google Gemini API 金鑰（到 aistudio.google.com/apikey 免費申請；Gemini Plus 訂閱本身不含 API 額度）</label>
+        <input type="password" id="gkey" placeholder="AIza..." autocomplete="off">
+        <label for="gmodel">Gemini 模型名稱</label>
+        <input type="text" id="gmodel" placeholder="gemini-2.5-flash">
         <label for="noise">要從主旨移除的贅詞（一行一個）</label>
         <textarea id="noise"></textarea>
         <div class="chk"><input type="checkbox" id="autocopy" checked><label for="autocopy" style="margin:0;color:var(--ink)">辨識完成後自動複製檔名</label></div>
@@ -126,7 +131,7 @@ summary{cursor:pointer;color:var(--sub);font-size:14px}
 
 <script>
 const $ = id => document.getElementById(id);
-const DEFAULT_NOISE = ['請查照','詳如說明','敬請查核','敬請查照','敬請核備','惠請核復','敬請核復'];
+const DEFAULT_NOISE = ['請查照','詳如說明','敬請查核','敬請查照','敬請核備','惠請核復','敬請核復','敬請核定','惠請核定'];
 let mode = 2;
 let currentBlob = null;
 
@@ -153,7 +158,7 @@ function cleanSubject(raw){
   let s = (raw||'').replace(/[\r\n]+/g,'');
   s = s.replace(/\s+(?=[㐀-鿿（(「])|(?<=[㐀-鿿）)」，。])\s+/g,'');   // 中文間多餘空白
   // 工程案名（含後面括號內的地址），連同引號一起移除
-  s = s.replace(/[「『"“]?(?:(?:臺|台)中市)?巨蛋(?:體育館|體育場)?(?:興建)?工程(?:[（(][^）)]*[）)])?[」』"”]?/g,'');
+  s = s.replace(/[「『"“'‘]?(?:(?:臺|台)中市)?巨蛋(?:體育館|體育場)?(?:興建)?工程(?:[（(][^）)]*[）)])?[」』"”'’]?/g,'');
   // 協力廠商說明
   s = s.replace(/共同承攬商.*?提送之/g,'');
   s = s.replace(/(?:股份)?有限公司/g,'');
@@ -161,6 +166,7 @@ function cleanSubject(raw){
   const noise = $('noise').value.split('\n').map(x=>x.trim()).filter(Boolean)
     .sort((a,b)=>b.length-a.length);
   for(const w of noise){ s = s.split(w).join(''); }
+  s = s.replace(/[，,]\S{0,3}請(?:核定|核復|核備|核示|查核|查照)。?$/,'');   // 句尾收尾套語（容忍 OCR 錯字，如「,人稅請核定」）
   s = s.replace(/[「」『』]/g,'');
   s = s.replace(/[\\\/:*?"<>|]/g,'');                       // 檔名不允許的字元
   s = s.replace(/[，,、;；]{2,}/g,'，').replace(/^[，,、;；。.\s]+|[，,、;；。.\s]+$/g,'');
@@ -222,7 +228,7 @@ function extractFromText(text){
     let m = t.match(/來文日期[:：]?(\d{2,3}[\/.]\d{1,2}[\/.]\d{1,2})/); if(m) out.send = m[1];
     m = t.match(/收文日期[:：]?(\d{2,3}[\/.]\d{1,2}[\/.]\d{1,2})/); if(m) out.recv = m[1];
     m = t.match(/附件件數[:：]?(\d+)/); if(m) out.att = +m[1];
-    m = t.match(/主旨[:：]?([\s\S]+?)(?:來文機關|主辦人員|限辦日期|簽核|決行|補正|$)/); if(m) out.subj = m[1];
+    m = t.match(/主旨[:：]?([\s\S]+?)(?:來文機關|主辦單位|主辦人員|限辦日期|簽核|決行|補正|$)/); if(m) out.subj = m[1];
   }else{
     let m = t.match(/發文日期[:：]?中華民國(\d{2,3})年(\d{1,2})月(\d{1,2})日/); if(m) out.send = `${m[1]}/${m[2]}/${m[3]}`;
     m = t.match(/收文[:：]?(\d{2,3}[\/.]\d{1,2}[\/.]\d{1,2})/); if(m) out.recv = m[1];
@@ -241,37 +247,98 @@ function loadScript(src){
     document.head.appendChild(s);
   });
 }
-async function upscale(blob){                    // 小圖放大後 OCR 較準
+async function toCanvas(blob){                   // 小圖放大後 OCR 較準
   const bmp = await createImageBitmap(blob);
-  if(bmp.width>=1400) return blob;
-  const k = Math.min(3, 1400/bmp.width), c = document.createElement('canvas');
+  const k = bmp.width>=1400 ? 1 : Math.min(3, 1400/bmp.width), c = document.createElement('canvas');
   c.width = Math.round(bmp.width*k); c.height = Math.round(bmp.height*k);
   const g = c.getContext('2d'); g.imageSmoothingQuality='high'; g.drawImage(bmp,0,0,c.width,c.height);
-  return new Promise(r=>c.toBlob(r,'image/png'));
+  return c;
+}
+function cropCanvas(src,x,y,w,h,k){
+  x=Math.max(0,Math.round(x)); y=Math.max(0,Math.round(y));
+  w=Math.min(src.width-x,Math.round(w)); h=Math.min(src.height-y,Math.round(h));
+  const c=document.createElement('canvas'); c.width=Math.round(w*k); c.height=Math.round(h*k);
+  const g=c.getContext('2d'); g.imageSmoothingQuality='high'; g.fillStyle='#fff'; g.fillRect(0,0,c.width,c.height);
+  g.drawImage(src,x,y,w,h,0,0,c.width,c.height); return c;
+}
+// 在 OCR 的字詞位置中找出標籤（例如「來文字號」），回傳其外框
+function findLabel(words,label){
+  const chars=[]; words.forEach(w=>[...(w.text||'')].forEach(ch=>{ if(!/\s/.test(ch)) chars.push({ch,w}); }));
+  const seq=[...label];
+  for(let i=0;i<=chars.length-seq.length;i++){
+    if(seq.every((c,j)=>chars[i+j].ch===c)){
+      const ws=chars.slice(i,i+seq.length).map(o=>o.w.bbox);
+      return {x1:Math.max(...ws.map(b=>b.x1)), y0:Math.min(...ws.map(b=>b.y0)), y1:Math.max(...ws.map(b=>b.y1))};
+    }
+  }
+  return null;
 }
 async function runOCR(blob){
   setStatus('載入 OCR 元件…（首次需下載中文語言包，約 10–20 秒）');
   await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js');
-  const r = await Tesseract.recognize(await upscale(blob),'chi_tra',{logger:m=>{
+  const worker = await Tesseract.createWorker('chi_tra',1,{logger:m=>{
     if(m.progress!=null){ setProgress(m.progress); setStatus(`OCR 辨識中… ${m.status} ${Math.round(m.progress*100)}%`); }
   }});
-  return extractFromText(r.data.text);
+  try{
+    const cv = await toCanvas(blob);
+    const r = await worker.recognize(cv);
+    const out = extractFromText(r.data.text);
+    // 公文系統畫面：整頁 OCR 常漏掉小格子，改為裁出「來文字號」右邊那格放大重跑
+    if(out.mode===2 && !/字第\d{6,}號/.test(out.ref||'')){
+      const L = findLabel(r.data.words||[],'來文字號');
+      if(L){
+        setStatus('補強辨識「來文字號」…');
+        const h = L.y1-L.y0;
+        const crop = cropCanvas(cv, L.x1+6, L.y0-h*0.75, cv.width-L.x1-10, h*2.5, 3);
+        await worker.setParameters({tessedit_pageseg_mode:'6'});
+        const r2 = await worker.recognize(crop);
+        const ref = findRef(r2.data.text.replace(/\s+/g,''), true);
+        if(ref) out.ref = ref;
+      }
+    }
+    // 主旨：同樣裁出主旨那格放大重跑（整頁 OCR 容易混入雜字）
+    if(out.mode===2){
+      const flat = t => t.replace(/\s+/g,'');
+      const lines = r.data.lines||[];
+      const i0 = lines.findIndex(l=>/主旨/.test(flat(l.text)));
+      const L = findLabel(r.data.words||[],'主旨');
+      if(i0>=0 && L){
+        let i1 = lines.findIndex((l,i)=>i>i0 && /主辦單位|主辦人員|限辦日期/.test(flat(l.text)));
+        if(i1<0) i1 = Math.min(lines.length,i0+3);
+        const sel = lines.slice(i0,i1).map(l=>l.bbox);
+        const y0 = Math.min(...sel.map(b=>b.y0))-6, y1 = Math.max(...sel.map(b=>b.y1))+6;
+        setStatus('補強辨識「主旨」…');
+        const crop = cropCanvas(cv, L.x1+6, y0, cv.width-L.x1-12, y1-y0, 2.5);
+        await worker.setParameters({tessedit_pageseg_mode:'6'});
+        const r3 = await worker.recognize(crop);
+        const subj = flat(r3.data.text);
+        if(subj.length>=6) out.subj = subj;
+      }
+    }
+    return out;
+  }finally{ await worker.terminate(); }
 }
 
 /* ---------- 辨識：Claude ---------- */
 const blobToB64 = b => new Promise((res,rej)=>{ const f=new FileReader(); f.onload=()=>res(String(f.result).split(',')[1]); f.onerror=rej; f.readAsDataURL(b); });
-async function runClaude(blob){
-  setStatus('Claude 辨識中…'); setProgress(.4);
-  const data = await blobToB64(blob);
-  const prompt = `這是一份台灣公文的截圖（可能是公文 PDF 截圖，或公文系統的「收文資訊」畫面）。請逐字擷取下列欄位，不要改寫、不要補字，只回傳 JSON：
+const AI_PROMPT = `這是一份台灣公文的截圖（可能是公文 PDF 截圖，或公文系統的「收文資訊」畫面）。請逐字擷取下列欄位，不要改寫、不要補字，只回傳 JSON：
 {"format":"pdf 或 system",
  "send":"來文日期／發文日期，照原樣（例：115/04/02 或 113年8月19日）",
  "recv":"收文日期，照原樣（PDF 為右下角章戳「收文:」後的日期；系統畫面為「收文日期」欄）",
- "ref":"來文字號（發文字號），完整含機關字與號",
+ "ref":"來文字號（發文字號），完整含機關字與號；若分成兩行請接起來（例：九典字第1150003767號）",
  "doc":"公文文號（例 P11150011116，PDF 為條碼下方文字）",
  "att":附件件數的整數（系統畫面看「附件件數」；PDF 看「附件：」，無附件為 0，有則至少 1）,
  "subj":"主旨全文（不含「主旨：」二字），逐字照抄"}
 看不到的欄位用空字串，att 看不到用 0。`;
+function parseAI(txt,who){
+  const m = (txt||'').match(/\{[\s\S]*\}/);
+  if(!m) throw new Error(`${who} 回傳格式無法解析`);
+  const o = JSON.parse(m[0]);
+  return {mode:o.format==='system'?2:1, send:o.send, recv:o.recv, ref:o.ref, doc:o.doc, att:+o.att||0, subj:o.subj};
+}
+async function runClaude(blob){
+  setStatus('Claude 辨識中…'); setProgress(.4);
+  const data = await blobToB64(blob);
   const resp = await fetch('https://api.anthropic.com/v1/messages',{
     method:'POST',
     headers:{
@@ -284,7 +351,7 @@ async function runClaude(blob){
       model:'claude-sonnet-5', max_tokens:1500,
       messages:[{role:'user',content:[
         {type:'image',source:{type:'base64',media_type:blob.type||'image/png',data}},
-        {type:'text',text:prompt}
+        {type:'text',text:AI_PROMPT}
       ]}]
     })
   });
@@ -293,11 +360,27 @@ async function runClaude(blob){
     throw new Error(`Claude 回應錯誤 ${resp.status}：${msg}`);
   }
   const j = await resp.json();
-  const txt = (j.content||[]).map(c=>c.text||'').join('');
-  const m = txt.match(/\{[\s\S]*\}/);
-  if(!m) throw new Error('Claude 回傳格式無法解析');
-  const o = JSON.parse(m[0]);
-  return {mode:o.format==='system'?2:1, send:o.send, recv:o.recv, ref:o.ref, doc:o.doc, att:+o.att||0, subj:o.subj};
+  return parseAI((j.content||[]).map(c=>c.text||'').join(''),'Claude');
+}
+async function runGemini(blob){
+  setStatus('Gemini 辨識中…'); setProgress(.4);
+  const data = await blobToB64(blob);
+  const model = $('gmodel').value.trim() || 'gemini-2.5-flash';
+  const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,{
+    method:'POST',
+    headers:{'content-type':'application/json','x-goog-api-key':$('gkey').value.trim()},
+    body:JSON.stringify({
+      contents:[{parts:[{inline_data:{mime_type:blob.type||'image/png',data}},{text:AI_PROMPT}]}],
+      generationConfig:{temperature:0, responseMimeType:'application/json'}
+    })
+  });
+  if(!resp.ok){
+    let msg=''; try{ msg=(await resp.json()).error.message; }catch(e){}
+    throw new Error(`Gemini 回應錯誤 ${resp.status}：${msg}`);
+  }
+  const j = await resp.json();
+  const parts = j.candidates?.[0]?.content?.parts || [];
+  return parseAI(parts.map(p=>p.text||'').join(''),'Gemini');
 }
 
 /* ---------- 流程 ---------- */
@@ -329,12 +412,14 @@ async function handleImage(blob){
   currentBlob = blob;
   const url = URL.createObjectURL(blob);
   $('drop').innerHTML = `<img alt="已貼上的截圖" src="${url}">`;
-  const eng = $('engine').value, hasKey = !!$('key').value.trim();
-  const useClaude = eng==='claude' || (eng==='auto' && hasKey);
-  if(eng==='claude' && !hasKey){ setStatus('請先到「設定」輸入 API 金鑰，或改用內建 OCR','err'); return; }
+  const eng = $('engine').value, hasC = !!$('key').value.trim(), hasG = !!$('gkey').value.trim();
+  let use = eng;
+  if(eng==='auto') use = hasC ? 'claude' : hasG ? 'gemini' : 'ocr';
+  if(use==='claude' && !hasC){ setStatus('請先到「設定」輸入 Claude API 金鑰，或改用其他辨識方式','err'); return; }
+  if(use==='gemini' && !hasG){ setStatus('請先到「設定」輸入 Gemini API 金鑰，或改用其他辨識方式','err'); return; }
   try{
-    setProgress(useClaude?.2:0);
-    const o = useClaude ? await runClaude(blob) : await runOCR(blob);
+    setProgress(use==='ocr'?0:.2);
+    const o = use==='claude' ? await runClaude(blob) : use==='gemini' ? await runGemini(blob) : await runOCR(blob);
     fill(o);
     setProgress(null);
     const name = buildName();
@@ -399,6 +484,8 @@ drop.addEventListener('drop',e=>{ const f=[...e.dataTransfer.files].filter(f=>f.
 ['fSend','fRecv','fRef','fDoc','fAtt','fSubj','omitSame'].forEach(id=>$(id).addEventListener('input',render));
 $('noise').addEventListener('input',()=>{ store.set('gw_noise',$('noise').value); render(); });
 $('key').addEventListener('input',()=>store.set('gw_key',$('key').value));
+$('gkey').addEventListener('input',()=>store.set('gw_gkey',$('gkey').value));
+$('gmodel').addEventListener('input',()=>store.set('gw_gmodel',$('gmodel').value));
 $('engine').addEventListener('change',()=>store.set('gw_engine',$('engine').value));
 $('autocopy').addEventListener('change',()=>store.set('gw_autocopy',$('autocopy').checked?'1':'0'));
 $('m1').onclick=()=>setMode(1);
@@ -411,6 +498,8 @@ $('copy').onclick=async()=>{
 /* ---------- 初始化 ---------- */
 $('noise').value = store.get('gw_noise', DEFAULT_NOISE.join('\n'));
 $('key').value = store.get('gw_key','');
+$('gkey').value = store.get('gw_gkey','');
+$('gmodel').value = store.get('gw_gmodel','gemini-2.5-flash');
 $('engine').value = store.get('gw_engine','auto');
 $('autocopy').checked = store.get('gw_autocopy','1')==='1';
 setMode(2);
