@@ -87,6 +87,7 @@ summary{cursor:pointer;color:var(--sub);font-size:14px}
           <option value="gemini">Gemini 視覺辨識（需 Google AI Studio 金鑰）</option>
           <option value="ocr">內建 OCR（免費，中文數字較易錯）</option>
         </select>
+        <button type="button" id="engineApply" class="ghost" style="display:none;margin-top:6px">用新的辨識方式重新辨識這張截圖</button>
         <label for="key">Anthropic API 金鑰（只存在本機瀏覽器，不會上傳到其他地方）</label>
         <input type="password" id="key" placeholder="sk-ant-..." autocomplete="off">
         <label for="gkey">Google Gemini API 金鑰（到 aistudio.google.com/apikey 免費申請；Gemini Plus 訂閱本身不含 API 額度）</label>
@@ -486,7 +487,14 @@ $('noise').addEventListener('input',()=>{ store.set('gw_noise',$('noise').value)
 $('key').addEventListener('input',()=>store.set('gw_key',$('key').value));
 $('gkey').addEventListener('input',()=>store.set('gw_gkey',$('gkey').value));
 $('gmodel').addEventListener('input',()=>store.set('gw_gmodel',$('gmodel').value));
-$('engine').addEventListener('change',()=>store.set('gw_engine',$('engine').value));
+$('engine').addEventListener('change',()=>{
+  store.set('gw_engine',$('engine').value);
+  $('engineApply').style.display = currentBlob ? 'block' : 'none';
+});
+$('engineApply').addEventListener('click',()=>{
+  $('engineApply').style.display='none';
+  if(currentBlob) handleImage(currentBlob);
+});
 $('autocopy').addEventListener('change',()=>store.set('gw_autocopy',$('autocopy').checked?'1':'0'));
 $('m1').onclick=()=>setMode(1);
 $('m2').onclick=()=>setMode(2);
