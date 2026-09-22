@@ -367,9 +367,10 @@ async function runGemini(blob){
   setStatus('Gemini 辨識中…'); setProgress(.4);
   const data = await blobToB64(blob);
   const model = $('gmodel').value.trim() || 'gemini-2.5-flash';
-  const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,{
+  const key = $('gkey').value.trim();
+  const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`,{
     method:'POST',
-    headers:{'content-type':'application/json','x-goog-api-key':$('gkey').value.trim()},
+    headers:{'content-type':'application/json'},
     body:JSON.stringify({
       contents:[{parts:[{inline_data:{mime_type:blob.type||'image/png',data}},{text:AI_PROMPT}]}],
       generationConfig:{temperature:0, responseMimeType:'application/json'}
