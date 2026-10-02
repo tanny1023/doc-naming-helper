@@ -117,6 +117,9 @@ summary{cursor:pointer;color:var(--sub);font-size:14px}
 
       <details open>
         <summary>工作日誌（按「複製檔名」才會記錄；下班時可一鍵複製整天）</summary>
+        <div style="display:flex;justify-content:flex-end;margin-top:6px">
+          <button type="button" id="clearHist" class="ghost">清空全部紀錄</button>
+        </div>
         <div id="hist"></div>
       </details>
     </div>
@@ -465,6 +468,13 @@ $('file').addEventListener('change',e=>{ handleImage(e.target.files[0]); e.targe
 ['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('over');}));
 drop.addEventListener('drop',e=>{ const f=[...e.dataTransfer.files].filter(f=>f.type.startsWith('image/')).pop(); handleImage(f); });
 $('rerun').addEventListener('click',()=>recognize());
+$('clearHist').addEventListener('click',()=>{
+  if(!history.length) return;
+  if(!confirm('確定要清空全部工作日誌紀錄嗎？這個動作無法復原。')) return;
+  history = [];
+  store.set('gw_hist','[]');
+  renderHistory();
+});
 
 ['fSend','fRecv','fRef','fDoc','fAtt','fSubj','omitSame'].forEach(id=>$(id).addEventListener('input',render));
 $('noise').addEventListener('input',()=>{ store.set('gw_noise',$('noise').value); render(); });
