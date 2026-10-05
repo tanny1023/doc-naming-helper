@@ -90,7 +90,6 @@ summary{cursor:pointer;color:var(--sub);font-size:14px}
         <p class="hint" style="margin-top:0">辨識方式固定使用內建 OCR：完全免費、在你的瀏覽器裡執行，截圖不會上傳到任何伺服器。</p>
         <label for="noise">要從主旨移除的贅詞（一行一個）</label>
         <textarea id="noise"></textarea>
-        <div class="chk"><input type="checkbox" id="autocopy" checked><label for="autocopy" style="margin:0;color:var(--ink)">辨識完成後自動複製檔名</label></div>
       </details>
     </div>
 
@@ -365,15 +364,10 @@ async function recognize(){
     setProgress(null);
     const name = buildName();
     if(name){
-      let doneMsg='';
-      if($('autocopy').checked){
-        const copied = await copyAndLog(name);
-        doneMsg = copied ? '，已複製檔名並記錄到工作日誌' : '，已記錄到工作日誌（複製失敗，請手動選取）';
-      }
       const miss = [['fSend','日期'],['fRef','來文字號'],['fDoc','公文文號'],['fSubj','主旨']]
         .filter(([id])=>!$(id).value.trim()).map(x=>x[1]);
-      if(miss.length) setStatus(`未辨識到：${miss.join('、')}，請手動補上再按「複製檔名」。`,'err');
-      else setStatus(`辨識完成${doneMsg}。請逐字核對欄位後再使用。`,'ok');
+      if(miss.length) setStatus(`未辨識到：${miss.join('、')}，請手動補上（黃色欄位）後再按「複製檔名」。`,'err');
+      else setStatus('辨識完成。請逐字核對欄位後再按「複製檔名」。','ok');
     }else setStatus('沒有辨識到內容，請換一張截圖或手動輸入','err');
   }catch(e){
     setProgress(null);
@@ -396,8 +390,10 @@ async function copyText(t){
     }catch(e2){ return false; }
   }
 }
-async function copyAndLog(name){                 // 複製檔名代表「這份做完了」，一律記錄；剪貼簿失敗只影響提示文字
-  if(name) addHistory(name);
+async function copyAndLog(){                     // 複製檔名代表「這份做完了」，一律記錄；剪貼簿失敗只影響提示文字
+  const name = buildName();
+  const doc = $('fDoc').value.trim(), subj = cleanSubject($('fSubj').value);
+  if(doc || subj) addHistory(doc, subj);
   return await copyText(name);
 }
 
@@ -418,11 +414,14 @@ try{
   history = raw.map(x => typeof x==='string' ? {name:x, date:todayKey(), ts:0} : x);   // 相容舊版（無日期）紀錄
 }catch(e){ history = []; }
 
-function addHistory(n){
-  if(!n) return;
+// 一筆紀錄只存「公文文號＋主旨」；舊版紀錄沒有這兩欄，就照原本的 name 顯示
+function entryText(it, sep){
+  return it.doc!==undefined ? [it.doc, it.subj].filter(Boolean).join(sep) : it.name;
+}
+function addHistory(doc, subj){
   const date = todayKey();
-  history = history.filter(x=>!(x.name===n && x.date===date));
-  history.unshift({name:n, date, ts:Date.now()});
+  history = history.filter(x=>!(x.date===date && x.doc===doc && x.subj===subj));
+  history.unshift({doc, subj, date, ts:Date.now()});
   history = history.slice(0,300);
   store.set('gw_hist', JSON.stringify(history));
   renderHistory();
@@ -445,7 +444,7 @@ function renderHistory(){
     label.textContent = (g.date===today ? '今天 ' : '') + dateLabel(g.date) + `（${g.items.length} 筆）`;
     const copyAllBtn=document.createElement('button'); copyAllBtn.className='ghost'; copyAllBtn.textContent='複製整天檔名';
     copyAllBtn.onclick=async()=>{
-      const text = g.items.map(it=>it.name).reverse().join('\n');   // 由早到晚排序，方便回報
+      const text = g.items.map(it=>entryText(it,'\t')).reverse().join('\n');   // 由早到晚排序；tab 分隔，貼到 Excel 會自動分欄
       const ok = await copyText(text);
       copyAllBtn.textContent = ok ? `已複製 ${g.items.length} 筆` : '複製失敗';
       setTimeout(()=>copyAllBtn.textContent='複製整天檔名',1500);
@@ -454,8 +453,8 @@ function renderHistory(){
     const ul=document.createElement('ul'); ul.className='hist';
     g.items.forEach(it=>{
       const li=document.createElement('li'), sp=document.createElement('span'), b=document.createElement('button'), del=document.createElement('button');
-      sp.textContent=it.name; b.className='ghost'; b.textContent='複製';
-      b.onclick=async()=>{ const ok=await copyText(it.name); b.textContent=ok?'已複製':'失敗'; setTimeout(()=>b.textContent='複製',1200); };
+      sp.textContent=entryText(it,'　'); b.className='ghost'; b.textContent='複製';
+      b.onclick=async()=>{ const ok=await copyText(entryText(it,'\t')); b.textContent=ok?'已複製':'失敗'; setTimeout(()=>b.textContent='複製',1200); };
       del.className='ghost'; del.textContent='刪除'; del.title='只刪除這一筆';
       del.onclick=()=>{ history = history.filter(x=>x!==it); store.set('gw_hist', JSON.stringify(history)); renderHistory(); };
       li.append(sp,b,del); ul.appendChild(li);
@@ -490,17 +489,15 @@ $('clearHist').addEventListener('click',()=>{
 ['fSend','fRecv','fRef','fDoc','fAtt','fSubj','omitSame'].forEach(id=>$(id).addEventListener('input',render));
 CHECK_IDS.forEach(id=>$(id).addEventListener('input',()=>{ if(ocrDone) markMissing(); }));
 $('noise').addEventListener('input',()=>{ store.set('gw_noise',$('noise').value); render(); });
-$('autocopy').addEventListener('change',()=>store.set('gw_autocopy',$('autocopy').checked?'1':'0'));
 $('m1').onclick=()=>setMode(1);
 $('m2').onclick=()=>setMode(2);
 $('copy').onclick=async()=>{
-  const ok = await copyAndLog(buildName());
+  const ok = await copyAndLog();
   $('copy').textContent=ok?'已複製 ✓':'複製失敗，請手動選取'; setTimeout(()=>$('copy').textContent='複製檔名',1400);
 };
 
 /* ---------- 初始化 ---------- */
 $('noise').value = store.get('gw_noise', DEFAULT_NOISE.join('\n'));
-$('autocopy').checked = store.get('gw_autocopy','1')==='1';
 setMode(2);
 renderHistory();
 </script>
