@@ -62,6 +62,7 @@ summary{cursor:pointer;color:var(--sub);font-size:14px}
 .hist li{display:flex;gap:8px;align-items:center;padding:6px 0;border-top:1px solid var(--line);font-size:13px}
 .hist li span{flex:1;word-break:break-all}
 .hint{font-size:12px;color:var(--sub);margin-top:4px}
+.need{background:#ffeb3b !important;color:#000 !important}   /* 未辨識到、需手動更正的欄位 */
 </style>
 </head>
 <body>
@@ -347,12 +348,20 @@ function showImage(blob){
   $('rerun').style.display = 'inline-block';
 }
 
+// 辨識後，沒讀到的必填欄位用黃色標示；使用者填入後自動取消標示
+let ocrDone = false;
+const CHECK_IDS = ['fSend','fRecv','fRef','fDoc','fSubj'];
+function markMissing(){
+  CHECK_IDS.forEach(id=>{ const el=$(id); el.classList.toggle('need', !el.value.trim()); });
+}
+
 async function recognize(){
   if(!currentBlob) return;
   try{
     setProgress(0);
     const o = await runOCR(currentBlob);
     fill(o);
+    ocrDone = true; markMissing();
     setProgress(null);
     const name = buildName();
     if(name){
@@ -444,10 +453,12 @@ function renderHistory(){
     head.append(label, copyAllBtn);
     const ul=document.createElement('ul'); ul.className='hist';
     g.items.forEach(it=>{
-      const li=document.createElement('li'), sp=document.createElement('span'), b=document.createElement('button');
+      const li=document.createElement('li'), sp=document.createElement('span'), b=document.createElement('button'), del=document.createElement('button');
       sp.textContent=it.name; b.className='ghost'; b.textContent='複製';
       b.onclick=async()=>{ const ok=await copyText(it.name); b.textContent=ok?'已複製':'失敗'; setTimeout(()=>b.textContent='複製',1200); };
-      li.append(sp,b); ul.appendChild(li);
+      del.className='ghost'; del.textContent='刪除'; del.title='只刪除這一筆';
+      del.onclick=()=>{ history = history.filter(x=>x!==it); store.set('gw_hist', JSON.stringify(history)); renderHistory(); };
+      li.append(sp,b,del); ul.appendChild(li);
     });
     day.append(head, ul);
     box.appendChild(day);
@@ -477,6 +488,7 @@ $('clearHist').addEventListener('click',()=>{
 });
 
 ['fSend','fRecv','fRef','fDoc','fAtt','fSubj','omitSame'].forEach(id=>$(id).addEventListener('input',render));
+CHECK_IDS.forEach(id=>$(id).addEventListener('input',()=>{ if(ocrDone) markMissing(); }));
 $('noise').addEventListener('input',()=>{ store.set('gw_noise',$('noise').value); render(); });
 $('autocopy').addEventListener('change',()=>store.set('gw_autocopy',$('autocopy').checked?'1':'0'));
 $('m1').onclick=()=>setMode(1);
