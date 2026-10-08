@@ -135,15 +135,9 @@ table.sheet tr.overdue td{background:rgba(192,57,43,.08)}
       </div>
 
       <details open>
-        <summary>公文管制（按「複製檔名」記錄；可匯入/匯出公文管制表 Excel，粗估是否逾期）</summary>
+        <summary>公文管制（按「複製檔名」記錄；確認後按「匯入管制表」存進去，進階編輯請到「公文管制表」頁）</summary>
 
-        <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:6px">
-          <button type="button" id="importXlsx" class="ghost">匯入管制表 Excel</button>
-          <button type="button" id="exportXlsx" class="ghost">匯出管制表 Excel</button>
-          <button type="button" id="recompute" class="ghost">重新判斷逾期</button>
-        </div>
         <input type="file" id="importFile" accept=".xlsx,.xls" hidden>
-        <p class="hint" id="ctrlSummary" style="margin:8px 0 0"></p>
 
         <div style="display:flex;justify-content:flex-end;margin-top:14px">
           <button type="button" id="clearHist" class="ghost">清空全部紀錄</button>
@@ -726,9 +720,10 @@ function commitHistoryToControlTable(items){
 }
 
 function renderCtrlSummary(){
-  const el = $('ctrlSummary');
+  const el = $('ctrlSummary2');     // 摘要只留在「公文管制表」頁；公文截圖命名頁不重複顯示
+  if(!el) return;
   if(!controlRows.length){
-    el.innerHTML = '管制表目前沒有資料，可按「匯入管制表 Excel」讀入既有公文目錄，或按「複製檔名」自動累積新資料。';
+    el.innerHTML = '管制表目前沒有資料，可按「匯入管制表 Excel」讀入既有公文目錄，或到「公文截圖命名」頁用「複製檔名」累積後按「匯入管制表」。';
     return;
   }
   const overdue = controlRows.filter(r=>/^逾期/.test(r.是否逾期||''));
@@ -741,7 +736,6 @@ function renderCtrlSummary(){
     if(overdue.length>10) html += `<br>…其餘 ${overdue.length-10} 筆`;
   }
   el.innerHTML = html;
-  const el2 = $('ctrlSummary2'); if(el2) el2.innerHTML = html;   // 公文管制表頁的摘要跟這裡同步
 }
 
 async function loadXLSX(){ await loadScript('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js', ()=>window.XLSX); }
@@ -926,17 +920,11 @@ $('clearHist').addEventListener('click',()=>{
   store.set('gw_hist','[]');
   renderHistory();
 });
-$('importXlsx').addEventListener('click',()=>$('importFile').click());
 $('importFile').addEventListener('change',async e=>{
   const f=e.target.files[0]; e.target.value='';
   if(!f) return;
   try{ await importControlXlsx(f); }
   catch(err){ setStatus('匯入失敗：'+(err.message||err),'err'); }
-});
-$('exportXlsx').addEventListener('click',async()=>{
-  if(!controlRows.length && !ctrlRules.length && !ctrlPenalty.length){ setStatus('管制表還沒有資料可匯出','err'); return; }
-  try{ await exportControlXlsx(); }
-  catch(err){ setStatus('匯出失敗：'+(err.message||err),'err'); }
 });
 function forceRecompute(){
   if(!controlRows.length){ setStatus('管制表還沒有資料','err'); return; }
@@ -946,8 +934,6 @@ function forceRecompute(){
   renderDirGrid();
   setStatus('已重新判斷逾期狀態。','ok');
 }
-$('recompute').addEventListener('click', forceRecompute);
-
 /* ---------- 頁面切換（公文截圖命名 / 公文管制表） ---------- */
 function setNav(which){
   $('navA').setAttribute('aria-pressed', which==='A');
