@@ -116,8 +116,16 @@ summary{cursor:pointer;color:var(--sub);font-size:14px}
       </div>
 
       <details open>
-        <summary>工作日誌（按「複製檔名」才會記錄；下班時可一鍵複製整天）</summary>
-        <div style="display:flex;justify-content:flex-end;margin-top:6px">
+        <summary>公文管制（按「複製檔名」記錄；可匯入/匯出公文管制表 Excel，粗估是否逾期）</summary>
+
+        <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:6px">
+          <button type="button" id="importXlsx" class="ghost">匯入管制表 Excel</button>
+          <button type="button" id="exportXlsx" class="ghost">匯出管制表 Excel</button>
+        </div>
+        <input type="file" id="importFile" accept=".xlsx,.xls" hidden>
+        <p class="hint" id="ctrlSummary" style="margin:8px 0 0"></p>
+
+        <div style="display:flex;justify-content:flex-end;margin-top:14px">
           <button type="button" id="clearHist" class="ghost">清空全部紀錄</button>
         </div>
         <div id="hist"></div>
@@ -237,10 +245,10 @@ function extractFromText(text){
 }
 
 /* ---------- 辨識：內建 OCR ---------- */
-function loadScript(src){
+function loadScript(src, checkGlobal){
   return new Promise((res,rej)=>{
-    if(window.Tesseract) return res();
-    const s=document.createElement('script'); s.src=src; s.onload=res; s.onerror=()=>rej(new Error('無法載入 OCR 元件，請確認網路連線'));
+    if(checkGlobal && checkGlobal()) return res();
+    const s=document.createElement('script'); s.src=src; s.onload=res; s.onerror=()=>rej(new Error('無法載入必要元件，請確認網路連線'));
     document.head.appendChild(s);
   });
 }
@@ -272,7 +280,7 @@ function findLabel(words,label){
 }
 async function runOCR(blob){
   setStatus('載入 OCR 元件…（首次需下載中文語言包，約 10–20 秒）');
-  await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js');
+  await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js', ()=>window.Tesseract);
   const worker = await Tesseract.createWorker('chi_tra',1,{logger:m=>{
     if(m.progress!=null){ setProgress(m.progress); setStatus(`OCR 辨識中… ${m.status} ${Math.round(m.progress*100)}%`); }
   }});
@@ -394,6 +402,7 @@ async function copyAndLog(){                     // 複製檔名代表「這份�
   const name = buildName();
   const doc = $('fDoc').value.trim(), subj = cleanSubject($('fSubj').value);
   if(doc || subj) addHistory(doc, subj);
+  if(doc) addToControlTable();
   return await copyText(name);
 }
 
@@ -464,6 +473,132 @@ function renderHistory(){
   });
 }
 
+/* ---------- 公文管制表（可匯入/匯出 Excel，粗估是否逾期） ----------
+ * 跟工作日誌是兩份獨立資料：工作日誌只存文號+主旨方便複製回報，
+ * 這裡額外存發文/收文日期＋廠商，並嘗試套用契約期限粗估是否逾期，
+ * 可匯入既有的「公文管制表.xlsx」合併、也可匯出成同樣格式的 Excel。
+ * 注意：只有「會議紀錄」「監造月報」能從單筆資料直接判斷；
+ * 一般審查（7日）、估驗（5日）需要配對原始來文日期，這裡做不到，
+ * 一律列為「待確認」，正式認定仍以本機的公文逾期批次工具為準。
+ */
+const CTRL_HEADERS = ['發文日期','收文日期','廠商名稱','公文文號','主旨','是否逾期'];
+const VENDOR_BY_PREFIX = {'九典':'九典聯合建築師事務所','麗':'麗明營造股份有限公司'};
+function vendorFromRef(ref){
+  const m = (ref||'').match(/^(.+?)字第/);
+  return m ? (VENDOR_BY_PREFIX[m[1]] || m[1]) : '';
+}
+function toISODate(d){ return d ? `${1911+d.y}-${pad(d.m)}-${pad(d.d)}` : ''; }
+function normDateCell(v){
+  if(v instanceof Date) return `${v.getFullYear()}-${pad(v.getMonth()+1)}-${pad(v.getDate())}`;
+  return String(v==null?'':v).trim();
+}
+function esc(s){ return String(s==null?'':s).replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+
+function guessOverdue(row){
+  const subj = row.主旨 || '';
+  const issue = row.發文日期 ? new Date(row.發文日期) : null;
+  const validIssue = issue && !isNaN(issue);
+  if(/會議紀錄|協調會/.test(subj)){
+    const md = subj.match(/(\d{2,3})年(\d{1,2})月(\d{1,2})日/);        // 主旨常直接寫會議日期（民國年）
+    if(md && validIssue){
+      const meet = new Date(1911+(+md[1]), +md[2]-1, +md[3]);
+      const days = Math.round((issue-meet)/86400000);
+      return days<=3 ? '準時' : `逾期${days-3}日`;
+    }
+    return '待確認（會議日期未解析）';
+  }
+  if(/監造月報|公共工程監造報表/.test(subj)){
+    return validIssue ? (issue.getDate()<=5 ? '準時' : `逾期${issue.getDate()-5}日`) : '待確認';
+  }
+  return '待確認（需配對來文，建議用公文逾期批次工具確認）';
+}
+
+let controlRows = [];
+try{ controlRows = JSON.parse(store.get('gw_ctrl','[]')); }catch(e){ controlRows = []; }
+
+function upsertControlRow(row, mergeBlankOnly){
+  const i = controlRows.findIndex(x=>x.公文文號===row.公文文號);
+  if(i<0){ controlRows.unshift(row); return; }
+  controlRows[i] = mergeBlankOnly
+    ? { 發文日期:row.發文日期||controlRows[i].發文日期, 收文日期:row.收文日期||controlRows[i].收文日期,
+        廠商名稱:row.廠商名稱||controlRows[i].廠商名稱, 公文文號:row.公文文號,
+        主旨:row.主旨||controlRows[i].主旨, 是否逾期:row.是否逾期||controlRows[i].是否逾期 }
+    : row;
+}
+function saveControlRows(){ store.set('gw_ctrl', JSON.stringify(controlRows)); renderCtrlSummary(); }
+
+function addToControlTable(){
+  const doc = $('fDoc').value.trim();
+  if(!doc) return;
+  const row = {
+    發文日期: toISODate(parseDate($('fSend').value)),
+    收文日期: toISODate(parseDate($('fRecv').value)),
+    廠商名稱: vendorFromRef($('fRef').value.trim()),
+    公文文號: doc,
+    主旨: cleanSubject($('fSubj').value),
+    是否逾期: ''
+  };
+  row.是否逾期 = guessOverdue(row);
+  upsertControlRow(row, false);       // 自己辨識的資料比匯入的舊資料新，直接覆蓋
+  saveControlRows();
+}
+
+function renderCtrlSummary(){
+  const el = $('ctrlSummary');
+  if(!controlRows.length){
+    el.innerHTML = '管制表目前沒有資料，可按「匯入管制表 Excel」讀入既有公文目錄，或按「複製檔名」自動累積新資料。';
+    return;
+  }
+  const overdue = controlRows.filter(r=>/^逾期/.test(r.是否逾期||''));
+  const ontime = controlRows.filter(r=>r.是否逾期==='準時').length;
+  const pending = controlRows.length - overdue.length - ontime;
+  let html = `管制表共 <b>${controlRows.length}</b> 筆：逾期 <b style="color:#c0392b">${overdue.length}</b>・準時 ${ontime}・待確認 ${pending}`
+    + '（只有會議紀錄、監造月報能從主旨直接判斷，一般審查類需配對來文日期，暫列待確認）';
+  if(overdue.length){
+    html += '<br>' + overdue.slice(0,10).map(r=>`${esc(r.公文文號)}　${esc(r.是否逾期)}`).join('<br>');
+    if(overdue.length>10) html += `<br>…其餘 ${overdue.length-10} 筆`;
+  }
+  el.innerHTML = html;
+}
+
+async function loadXLSX(){ await loadScript('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js', ()=>window.XLSX); }
+
+async function importControlXlsx(file){
+  setStatus('載入 Excel 元件…');
+  await loadXLSX();
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(buf, {type:'array', cellDates:true});
+  const sheetName = wb.SheetNames.find(n=>/公文目錄|公文清單|管制/.test(n)) || wb.SheetNames[0];
+  const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {defval:''});
+  let added=0, updated=0;
+  rows.forEach(r=>{
+    const doc = String(r['公文文號']||r['文號']||'').trim();
+    if(!doc) return;
+    const exists = controlRows.some(x=>x.公文文號===doc);
+    upsertControlRow({
+      發文日期: normDateCell(r['發文日期']),
+      收文日期: normDateCell(r['收文日期']),
+      廠商名稱: String(r['廠商名稱']||'').trim(),
+      公文文號: doc,
+      主旨: String(r['主旨']||'').trim(),
+      是否逾期: String(r['是否逾期']||'').trim()
+    }, true);                         // 匯入資料只補空白欄位，不覆蓋本機已有的新資料
+    exists ? updated++ : added++;
+  });
+  saveControlRows();
+  setStatus(`已匯入「${sheetName}」：新增 ${added} 筆、更新 ${updated} 筆（管制表共 ${controlRows.length} 筆）`,'ok');
+}
+
+async function exportControlXlsx(){
+  await loadXLSX();
+  const sorted = [...controlRows].sort((a,b)=>(a.發文日期||'9999').localeCompare(b.發文日期||'9999'));
+  const data = [CTRL_HEADERS, ...sorted.map(r=>CTRL_HEADERS.map(h=>r[h]||''))];
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '公文目錄');
+  XLSX.writeFile(wb, `公文管制表_${todayKey()}.xlsx`);
+}
+
 /* ---------- 事件 ---------- */
 document.addEventListener('paste',e=>{
   const items=[...(e.clipboardData?.items||[])].filter(i=>i.type.startsWith('image/'));
@@ -485,6 +620,18 @@ $('clearHist').addEventListener('click',()=>{
   store.set('gw_hist','[]');
   renderHistory();
 });
+$('importXlsx').addEventListener('click',()=>$('importFile').click());
+$('importFile').addEventListener('change',async e=>{
+  const f=e.target.files[0]; e.target.value='';
+  if(!f) return;
+  try{ await importControlXlsx(f); }
+  catch(err){ setStatus('匯入失敗：'+(err.message||err),'err'); }
+});
+$('exportXlsx').addEventListener('click',async()=>{
+  if(!controlRows.length){ setStatus('管制表還沒有資料可匯出','err'); return; }
+  try{ await exportControlXlsx(); }
+  catch(err){ setStatus('匯出失敗：'+(err.message||err),'err'); }
+});
 
 ['fSend','fRecv','fRef','fDoc','fAtt','fSubj','omitSame'].forEach(id=>$(id).addEventListener('input',render));
 CHECK_IDS.forEach(id=>$(id).addEventListener('input',()=>{ if(ocrDone) markMissing(); }));
@@ -500,6 +647,7 @@ $('copy').onclick=async()=>{
 $('noise').value = store.get('gw_noise', DEFAULT_NOISE.join('\n'));
 setMode(2);
 renderHistory();
+renderCtrlSummary();
 </script>
 </body>
 </html>
