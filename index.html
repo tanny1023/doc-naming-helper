@@ -68,13 +68,13 @@ summary{cursor:pointer;color:var(--sub);font-size:14px}
 .gridtools{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}
 .gridtools input[type=text]{width:220px}
 .gridtools .sp{flex:1}
-.sheet-wrap{overflow:auto;max-height:70vh;border:1px solid var(--line);border-radius:8px}
-table.sheet{border-collapse:collapse;width:max-content;min-width:100%;font-size:13px;background:var(--card)}
+.sheet-wrap{overflow-x:hidden;overflow-y:auto;max-height:70vh;border:1px solid var(--line);border-radius:8px}
+table.sheet{table-layout:fixed;border-collapse:collapse;width:100%;font-size:13px;background:var(--card)}
 table.sheet th{position:sticky;top:0;z-index:1;background:var(--card);border:1px solid var(--line);
-  padding:6px 8px;text-align:left;white-space:nowrap;color:var(--ink)}
-table.sheet td{border:1px solid var(--line);padding:4px 8px;min-width:90px;max-width:420px;vertical-align:top}
+  padding:6px 8px;text-align:left;color:var(--ink);word-break:break-word}
+table.sheet td{border:1px solid var(--line);padding:4px 8px;vertical-align:top;
+  white-space:normal;word-break:break-word;overflow-wrap:anywhere}
 table.sheet td[contenteditable]:focus{outline:2px solid var(--accent);outline-offset:-2px;background:var(--out-bg)}
-table.sheet td.num{min-width:60px;max-width:70px}
 table.sheet tr.overdue td{background:rgba(192,57,43,.08)}
 </style>
 </head>
@@ -542,17 +542,20 @@ function renderHistory(){
  * 一律列為「待確認」，正式認定仍以本機的公文逾期批次工具為準。
  */
 const CTRL_HEADERS = ['發文日期','收文日期','廠商名稱','公文文號','主旨','是否逾期'];
-const VENDOR_BY_PREFIX = {'九典':'九典聯合建築師事務所','麗':'麗明營造股份有限公司'};   // 內建預設，只有這兩家
+const VENDOR_BY_PREFIX = {'九典':'九典','麗':'麗明'};   // 內建預設，只有這兩家；表格欄位窄，廠商名稱只留簡稱
+const VENDOR_SHORT = {'九典聯合建築師事務所':'九典','麗明營造股份有限公司':'麗明'};   // 匯入的 Excel 常是全名，統一縮成簡稱
+function shortenVendor(name){ return VENDOR_SHORT[name] || name; }
 
-// 學過的「來文字號機關字」→「廠商全名」對照，從匯入的管制表 Excel 自動累積，
-// 這樣遇到沒內建過的廠商（例如主旨裡常見的共同承攬商「擎邦」）也能自動帶出全名，不用每次手動補。
+// 學過的「來文字號機關字」→「廠商簡稱」對照，從匯入的管制表 Excel 自動累積，
+// 這樣遇到沒內建過的廠商（例如主旨裡常見的共同承攬商「擎邦」）也能自動帶出名稱，不用每次手動補。
 let vendorMap = {};
 try{ vendorMap = JSON.parse(store.get('gw_vendormap','{}')); }catch(e){ vendorMap = {}; }
 function saveVendorMap(){ store.set('gw_vendormap', JSON.stringify(vendorMap)); }
 function zihaoPrefix(zihao){ const m=(zihao||'').match(/^(.+?)字第/); return m ? m[1] : ''; }
 function learnVendor(zihao, vendor){
   const p = zihaoPrefix(zihao);
-  if(p && vendor && vendorMap[p]!==vendor){ vendorMap[p]=vendor; saveVendorMap(); }
+  const v = shortenVendor(vendor);
+  if(p && v && vendorMap[p]!==v){ vendorMap[p]=v; saveVendorMap(); }
 }
 function vendorFromRef(ref){
   const p = zihaoPrefix(ref);
@@ -587,6 +590,11 @@ function guessOverdue(row){
 
 let controlRows = [];
 try{ controlRows = JSON.parse(store.get('gw_ctrl','[]')); }catch(e){ controlRows = []; }
+{                                        // 既有資料裡的廠商全名也一起縮成簡稱，只跑一次
+  let changed = false;
+  controlRows.forEach(r=>{ const s=shortenVendor(r.廠商名稱); if(s!==r.廠商名稱){ r.廠商名稱=s; changed=true; } });
+  if(changed) store.set('gw_ctrl', JSON.stringify(controlRows));
+}
 
 function upsertControlRow(row, mergeBlankOnly){
   const i = controlRows.findIndex(x=>x.公文文號===row.公文文號);
@@ -749,6 +757,11 @@ let ctrlRules = [];
 try{ ctrlRules = JSON.parse(store.get('gw_rules','[]')); }catch(e){ ctrlRules = []; }
 let ctrlPenalty = [];
 try{ ctrlPenalty = JSON.parse(store.get('gw_penalty','[]')); }catch(e){ ctrlPenalty = []; }
+{
+  let changed = false;
+  ctrlPenalty.forEach(r=>{ const s=shortenVendor(r['廠商名稱']); if(s!==r['廠商名稱']){ r['廠商名稱']=s; changed=true; } });
+  if(changed) store.set('gw_penalty', JSON.stringify(ctrlPenalty));
+}
 function saveRules(){ store.set('gw_rules', JSON.stringify(ctrlRules)); }
 function savePenalty(){ store.set('gw_penalty', JSON.stringify(ctrlPenalty)); }
 
@@ -762,6 +775,13 @@ function buildEditableTable(containerId, headers, rows, opts={}){
   }
   const wrap = document.createElement('div'); wrap.className='sheet-wrap';
   const table = document.createElement('table'); table.className='sheet';
+  if(opts.colWidths){                 // 固定欄寬＋文字換行，表格才不會被長內容撐開、不用左右拉捲軸
+    const colgroup = document.createElement('colgroup');
+    opts.colWidths.forEach(w=>{ const col=document.createElement('col'); col.style.width=w; colgroup.appendChild(col); });
+    const delCol = document.createElement('col'); delCol.style.width = opts.delWidth||'52px';
+    colgroup.appendChild(delCol);
+    table.appendChild(colgroup);
+  }
   const thead = document.createElement('thead'), trh = document.createElement('tr');
   headers.forEach(h=>{ const th=document.createElement('th'); th.textContent=h; trh.appendChild(th); });
   trh.appendChild(document.createElement('th'));
@@ -797,6 +817,7 @@ function renderDirGrid(){
     : controlRows;
   buildEditableTable('gridDir', DIR_DISPLAY_HEADERS, rows, {
     emptyHint: kw ? '沒有符合搜尋的資料。' : '目前沒有資料，可按上面「匯入管制表 Excel」，或到「公文截圖命名」頁按「複製檔名」累積。',
+    colWidths: ['8%','8%','6%','12%','35%','14%','12%'], delWidth:'5%',
     rowClass: row => /^逾期/.test(row.是否逾期||'') ? 'overdue' : '',
     onEdit: (row)=>{ row.guess=false; saveControlRows(); },   // 手動改過的列視為使用者已確認，之後「重新判斷逾期」不會覆蓋
     onDelete: (row)=>{
@@ -809,6 +830,7 @@ function renderDirGrid(){
 function renderRuleGrid(){
   buildEditableTable('gridRule', RULE_HEADERS, ctrlRules, {
     emptyHint: '目前沒有資料，可按上面「匯入管制表 Excel」讀入契約逾期規定，或按「＋ 新增一列」手動輸入。',
+    colWidths: ['25%','20%','20%','29%'], delWidth:'6%',
     onEdit: ()=>saveRules(),
     onDelete: (row)=>{ const idx=ctrlRules.indexOf(row); if(idx>=0) ctrlRules.splice(idx,1); saveRules(); renderRuleGrid(); }
   });
@@ -816,6 +838,7 @@ function renderRuleGrid(){
 function renderPenaltyGrid(){
   buildEditableTable('gridPenalty', PENALTY_HEADERS, ctrlPenalty, {
     emptyHint: '目前沒有資料，可按上面「匯入管制表 Excel」、「從公文目錄帶入逾期清單」，或「＋ 新增一列」手動輸入。',
+    colWidths: ['12%','6%','26%','6%','20%','16%','9%'], delWidth:'5%',
     onEdit: ()=>savePenalty(),
     onDelete: (row)=>{ const idx=ctrlPenalty.indexOf(row); if(idx>=0) ctrlPenalty.splice(idx,1); savePenalty(); renderPenaltyGrid(); }
   });
@@ -843,7 +866,7 @@ async function importControlXlsx(file){
       const doc = String(r['公文文號']||r['文號']||'').trim();
       if(!doc) return;
       const exists = controlRows.some(x=>x.公文文號===doc);
-      let vendor = String(r['廠商名稱']||'').trim();
+      let vendor = shortenVendor(String(r['廠商名稱']||'').trim());
       if(!vendor) vendor = vendorFromRef(doc);        // 廠商欄空白時，用學過的字號字首對照先帶入
       upsertControlRow({
         發文日期: normDateCell(r['發文日期']), 收文日期: normDateCell(r['收文日期']),
@@ -871,6 +894,7 @@ async function importControlXlsx(file){
       const doc = String(r['公文文號']||'').trim();
       if(!doc || ctrlPenalty.some(p=>p.公文文號===doc)) return;
       const row={}; PENALTY_HEADERS.forEach(h=>row[h]=String(r[h]||'').trim());
+      row['廠商名稱'] = shortenVendor(row['廠商名稱']);
       ctrlPenalty.push(row); penAdded++;
     });
     if(penAdded) savePenalty();
