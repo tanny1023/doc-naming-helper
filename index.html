@@ -459,11 +459,16 @@ async function copyText(t){
     }catch(e2){ return false; }
   }
 }
-async function copyAndLog(){                     // 複製檔名代表「這份做完了」，一律記錄；剪貼簿失敗只影響提示文字
-  const name = buildName();
+async function copyAndLog(){                     // 複製檔名只先存進工作日誌（暫存），不直接寫進公文管制表；
+  const name = buildName();                      // 要等使用者在下面確認、刪掉不用的，再按「匯入管制表」才會真的寫入
   const doc = $('fDoc').value.trim(), subj = cleanSubject($('fSubj').value);
-  if(doc || subj) addHistory(doc, subj);
-  if(doc) addToControlTable();
+  if(doc || subj){
+    addHistory(doc, subj, {                       // 多存發文/收文日期、廠商名稱，之後匯入管制表時才有完整欄位
+      發文日期: toISODate(parseDate($('fSend').value)),
+      收文日期: toISODate(parseDate($('fRecv').value)),
+      廠商名稱: vendorFromRef($('fRef').value.trim())
+    });
+  }
   return await copyText(name);
 }
 
@@ -488,10 +493,10 @@ try{
 function entryText(it, sep){
   return it.doc!==undefined ? [it.doc, it.subj].filter(Boolean).join(sep) : it.name;
 }
-function addHistory(doc, subj){
+function addHistory(doc, subj, extra){
   const date = todayKey();
   history = history.filter(x=>!(x.date===date && x.doc===doc && x.subj===subj));
-  history.unshift({doc, subj, date, ts:Date.now()});
+  history.unshift({doc, subj, date, ts:Date.now(), ...(extra||{})});
   history = history.slice(0,300);
   store.set('gw_hist', JSON.stringify(history));
   renderHistory();
@@ -512,8 +517,13 @@ function renderHistory(){
     const head=document.createElement('div'); head.className='day-head';
     const label=document.createElement('b');
     label.textContent = (g.date===today ? '今天 ' : '') + dateLabel(g.date) + `（${g.items.length} 筆）`;
-    const importBtn=document.createElement('button'); importBtn.className='ghost'; importBtn.textContent='匯入管制表 Excel';
-    importBtn.onclick=()=>$('importFile').click();   // 跟公文管制區的匯入按鈕是同一套，開同一個選檔視窗
+    const importBtn=document.createElement('button'); importBtn.className='ghost'; importBtn.textContent='匯入管制表';
+    importBtn.title='把這天目前還留著的項目（已刪掉不要的）寫進公文管制表';
+    importBtn.onclick=()=>{
+      const n = commitHistoryToControlTable(g.items);
+      importBtn.textContent = n ? `已匯入 ${n} 筆` : '沒有可匯入的項目';
+      setTimeout(()=>importBtn.textContent='匯入管制表',1500);
+    };
     head.append(label, importBtn);
     const ul=document.createElement('ul'); ul.className='hist';
     g.items.forEach(it=>{
@@ -699,22 +709,20 @@ function recomputePairings(){
   controlRows.forEach(r=>{ delete r._key; delete r._grams; });   // 暫存欄位，不進 localStorage
 }
 
-function addToControlTable(){
-  const doc = $('fDoc').value.trim();
-  if(!doc) return;
-  const row = {
-    發文日期: toISODate(parseDate($('fSend').value)),
-    收文日期: toISODate(parseDate($('fRecv').value)),
-    廠商名稱: vendorFromRef($('fRef').value.trim()),
-    公文文號: doc,
-    主旨: cleanSubject($('fSubj').value),
-    是否逾期: '',
-    配對文號: '',
-    guess: true
-  };
-  upsertControlRow(row, false);       // 自己辨識的資料比匯入的舊資料新，直接覆蓋
-  recomputePairings();                // 這筆可能正好解答了之前「待確認」的舊資料，一起重算
-  saveControlRows();
+// 把工作日誌裡（使用者已經刪掉不要的之後）剩下的項目，一次寫進公文管制表
+function commitHistoryToControlTable(items){
+  let count = 0;
+  items.forEach(it=>{
+    if(!it.doc) return;                 // 沒有公文文號，管制表用不上
+    upsertControlRow({
+      發文日期: it.發文日期||'', 收文日期: it.收文日期||'',
+      廠商名稱: it.廠商名稱||'', 公文文號: it.doc,
+      主旨: it.subj||'', 是否逾期:'', 配對文號:'', guess:true
+    }, false);                          // 使用者剛確認過的資料，直接覆蓋同文號舊資料
+    count++;
+  });
+  if(count){ recomputePairings(); saveControlRows(); }
+  return count;
 }
 
 function renderCtrlSummary(){
