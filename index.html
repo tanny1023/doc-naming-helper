@@ -512,14 +512,9 @@ function renderHistory(){
     const head=document.createElement('div'); head.className='day-head';
     const label=document.createElement('b');
     label.textContent = (g.date===today ? '今天 ' : '') + dateLabel(g.date) + `（${g.items.length} 筆）`;
-    const copyAllBtn=document.createElement('button'); copyAllBtn.className='ghost'; copyAllBtn.textContent='複製整天檔名';
-    copyAllBtn.onclick=async()=>{
-      const text = g.items.map(it=>entryText(it,'\t')).reverse().join('\n');   // 由早到晚排序；tab 分隔，貼到 Excel 會自動分欄
-      const ok = await copyText(text);
-      copyAllBtn.textContent = ok ? `已複製 ${g.items.length} 筆` : '複製失敗';
-      setTimeout(()=>copyAllBtn.textContent='複製整天檔名',1500);
-    };
-    head.append(label, copyAllBtn);
+    const importBtn=document.createElement('button'); importBtn.className='ghost'; importBtn.textContent='匯入管制表 Excel';
+    importBtn.onclick=()=>$('importFile').click();   // 跟公文管制區的匯入按鈕是同一套，開同一個選檔視窗
+    head.append(label, importBtn);
     const ul=document.createElement('ul'); ul.className='hist';
     g.items.forEach(it=>{
       const li=document.createElement('li'), sp=document.createElement('span'), b=document.createElement('button'), del=document.createElement('button');
@@ -543,10 +538,22 @@ function renderHistory(){
  * 一律列為「待確認」，正式認定仍以本機的公文逾期批次工具為準。
  */
 const CTRL_HEADERS = ['發文日期','收文日期','廠商名稱','公文文號','主旨','是否逾期'];
-const VENDOR_BY_PREFIX = {'九典':'九典聯合建築師事務所','麗':'麗明營造股份有限公司'};
+const VENDOR_BY_PREFIX = {'九典':'九典聯合建築師事務所','麗':'麗明營造股份有限公司'};   // 內建預設，只有這兩家
+
+// 學過的「來文字號機關字」→「廠商全名」對照，從匯入的管制表 Excel 自動累積，
+// 這樣遇到沒內建過的廠商（例如主旨裡常見的共同承攬商「擎邦」）也能自動帶出全名，不用每次手動補。
+let vendorMap = {};
+try{ vendorMap = JSON.parse(store.get('gw_vendormap','{}')); }catch(e){ vendorMap = {}; }
+function saveVendorMap(){ store.set('gw_vendormap', JSON.stringify(vendorMap)); }
+function zihaoPrefix(zihao){ const m=(zihao||'').match(/^(.+?)字第/); return m ? m[1] : ''; }
+function learnVendor(zihao, vendor){
+  const p = zihaoPrefix(zihao);
+  if(p && vendor && vendorMap[p]!==vendor){ vendorMap[p]=vendor; saveVendorMap(); }
+}
 function vendorFromRef(ref){
-  const m = (ref||'').match(/^(.+?)字第/);
-  return m ? (VENDOR_BY_PREFIX[m[1]] || m[1]) : '';
+  const p = zihaoPrefix(ref);
+  if(!p) return '';
+  return vendorMap[p] || VENDOR_BY_PREFIX[p] || p;   // 學過的優先，其次內建對照，都沒有就先用機關字本身佔位
 }
 function toISODate(d){ return d ? `${1911+d.y}-${pad(d.m)}-${pad(d.d)}` : ''; }
 function normDateCell(v){
@@ -823,13 +830,22 @@ async function importControlXlsx(file){
 
   let added=0, updated=0;
   if(dirName){
-    XLSX.utils.sheet_to_json(wb.Sheets[dirName], {defval:''}).forEach(r=>{
+    const dirRows = XLSX.utils.sheet_to_json(wb.Sheets[dirName], {defval:''});
+    // 先掃一輪：凡是「公文文號＋廠商名稱」都有填的列，學起來（這份 Excel 的「公文文號」欄其實就是來文字號格式）
+    dirRows.forEach(r=>{
+      const zihao = String(r['公文文號']||r['文號']||'').trim();
+      const vendor = String(r['廠商名稱']||'').trim();
+      if(zihao && vendor) learnVendor(zihao, vendor);
+    });
+    dirRows.forEach(r=>{
       const doc = String(r['公文文號']||r['文號']||'').trim();
       if(!doc) return;
       const exists = controlRows.some(x=>x.公文文號===doc);
+      let vendor = String(r['廠商名稱']||'').trim();
+      if(!vendor) vendor = vendorFromRef(doc);        // 廠商欄空白時，用學過的字號字首對照先帶入
       upsertControlRow({
         發文日期: normDateCell(r['發文日期']), 收文日期: normDateCell(r['收文日期']),
-        廠商名稱: String(r['廠商名稱']||'').trim(), 公文文號: doc,
+        廠商名稱: vendor, 公文文號: doc,
         主旨: String(r['主旨']||'').trim(), 是否逾期: String(r['是否逾期']||'').trim()
       }, true);                      // 匯入資料只補空白欄位，不覆蓋本機已有的新資料
       exists ? updated++ : added++;
