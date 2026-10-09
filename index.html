@@ -105,10 +105,25 @@ table.sheet tr.overdue td{background:rgba(192,57,43,.08)}
       <button type="button" id="rerun" class="ghost" style="display:none;margin-top:8px">重新辨識這張截圖</button>
 
       <details>
-        <summary>設定（去贅詞清單）</summary>
+        <summary>設定（去贅詞清單、Google 同步）</summary>
         <p class="hint" style="margin-top:0">辨識方式固定使用內建 OCR：完全免費、在你的瀏覽器裡執行，截圖不會上傳到任何伺服器。</p>
         <label for="noise">要從主旨移除的贅詞（一行一個）</label>
         <textarea id="noise"></textarea>
+
+        <label style="margin-top:16px">跨裝置同步（工作日誌、公文管制表、逾期規定、逾期扣罰、贅詞清單全部一起同步）</label>
+        <button class="ghost" id="btnG" type="button" style="margin-top:4px">Google 登入同步</button>
+        <div class="status" id="syncStatus" style="color:var(--sub)"></div>
+        <details id="gset" style="margin-top:8px">
+          <summary>Google 同步設定（第一次使用才需要）</summary>
+          <p class="hint">登入後資料會存到您 Google 雲端硬碟的隱藏「應用程式資料」區，換電腦登入同一個 Google 帳號就能看到。需要一組 OAuth 用戶端 ID：</p>
+          <ol class="hint" style="margin:4px 0 8px;padding-left:20px">
+            <li>到 console.cloud.google.com 建立專案，「API 和服務」→「程式庫」啟用 <b>Google Drive API</b>。</li>
+            <li>「OAuth 同意畫面」選「外部」，填應用程式名稱與您的 Email；建議按「發布應用程式」（只用 drive.appdata 權限，不需審核；留在測試狀態每 7 天要重新授權）。</li>
+            <li>「憑證」→「建立憑證」→「OAuth 用戶端 ID」→ 類型選「網頁應用程式」，「已授權的 JavaScript 來源」填 <b>https://tanny1023.github.io</b>。</li>
+            <li>把產生的「用戶端 ID」貼到下面，按儲存，再按「Google 登入同步」。如果您已經在「報表進度小幫手」設定過同一組，這裡可以直接貼同一個 ID（同一個網域可以共用）。</li>
+          </ol>
+          <div style="display:flex;gap:8px"><input type="text" id="cid" placeholder="xxxxxxxx.apps.googleusercontent.com"><button class="ghost" id="cidSave">儲存</button></div>
+        </details>
       </details>
     </div>
 
@@ -494,6 +509,7 @@ function addHistory(doc, subj, extra){
   history = history.slice(0,300);
   store.set('gw_hist', JSON.stringify(history));
   renderHistory();
+  touch();
 }
 
 function renderHistory(){
@@ -525,7 +541,7 @@ function renderHistory(){
       sp.textContent=entryText(it,'　'); b.className='ghost'; b.textContent='複製';
       b.onclick=async()=>{ const ok=await copyText(entryText(it,'\t')); b.textContent=ok?'已複製':'失敗'; setTimeout(()=>b.textContent='複製',1200); };
       del.className='ghost'; del.textContent='刪除'; del.title='只刪除這一筆';
-      del.onclick=()=>{ history = history.filter(x=>x!==it); store.set('gw_hist', JSON.stringify(history)); renderHistory(); };
+      del.onclick=()=>{ history = history.filter(x=>x!==it); store.set('gw_hist', JSON.stringify(history)); renderHistory(); touch(); };
       li.append(sp,b,del); ul.appendChild(li);
     });
     day.append(head, ul);
@@ -550,7 +566,7 @@ function shortenVendor(name){ return VENDOR_SHORT[name] || name; }
 // 這樣遇到沒內建過的廠商（例如主旨裡常見的共同承攬商「擎邦」）也能自動帶出名稱，不用每次手動補。
 let vendorMap = {};
 try{ vendorMap = JSON.parse(store.get('gw_vendormap','{}')); }catch(e){ vendorMap = {}; }
-function saveVendorMap(){ store.set('gw_vendormap', JSON.stringify(vendorMap)); }
+function saveVendorMap(){ store.set('gw_vendormap', JSON.stringify(vendorMap)); touch(); }
 function zihaoPrefix(zihao){ const m=(zihao||'').match(/^(.+?)字第/); return m ? m[1] : ''; }
 function learnVendor(zihao, vendor){
   const p = zihaoPrefix(zihao);
@@ -606,7 +622,7 @@ function upsertControlRow(row, mergeBlankOnly){
         配對文號:controlRows[i].配對文號||'', guess:controlRows[i].guess }
     : row;
 }
-function saveControlRows(){ store.set('gw_ctrl', JSON.stringify(controlRows)); renderCtrlSummary(); }
+function saveControlRows(){ store.set('gw_ctrl', JSON.stringify(controlRows)); renderCtrlSummary(); touch(); }
 
 /* ---- 配對引擎：麗明送審 ↔ 九典回覆，自動抓審查天數、算是否逾期 ----
  * 只處理「送審方＝麗明」「審查方＝九典」這種本案固定的角色；
@@ -762,8 +778,8 @@ try{ ctrlPenalty = JSON.parse(store.get('gw_penalty','[]')); }catch(e){ ctrlPena
   ctrlPenalty.forEach(r=>{ const s=shortenVendor(r['廠商名稱']); if(s!==r['廠商名稱']){ r['廠商名稱']=s; changed=true; } });
   if(changed) store.set('gw_penalty', JSON.stringify(ctrlPenalty));
 }
-function saveRules(){ store.set('gw_rules', JSON.stringify(ctrlRules)); }
-function savePenalty(){ store.set('gw_penalty', JSON.stringify(ctrlPenalty)); }
+function saveRules(){ store.set('gw_rules', JSON.stringify(ctrlRules)); touch(); }
+function savePenalty(){ store.set('gw_penalty', JSON.stringify(ctrlPenalty)); touch(); }
 
 // 通用可編輯表格：點儲存格可直接改，離開欄位(blur)時存檔
 function buildEditableTable(containerId, headers, rows, opts={}){
@@ -943,6 +959,7 @@ $('clearHist').addEventListener('click',()=>{
   history = [];
   store.set('gw_hist','[]');
   renderHistory();
+  touch();
 });
 $('importFile').addEventListener('change',async e=>{
   const f=e.target.files[0]; e.target.value='';
@@ -1021,13 +1038,140 @@ $('recompute2').addEventListener('click', forceRecompute);
 
 ['fSend','fRecv','fRef','fDoc','fAtt','fSubj','omitSame'].forEach(id=>$(id).addEventListener('input',render));
 CHECK_IDS.forEach(id=>$(id).addEventListener('input',()=>{ if(ocrDone) markMissing(); }));
-$('noise').addEventListener('input',()=>{ store.set('gw_noise',$('noise').value); render(); });
+$('noise').addEventListener('input',()=>{ store.set('gw_noise',$('noise').value); render(); touch(); });
 $('m1').onclick=()=>setMode(1);
 $('m2').onclick=()=>setMode(2);
 $('copy').onclick=async()=>{
   const ok = await copyAndLog();
   $('copy').textContent=ok?'已複製 ✓':'複製失敗，請手動選取'; setTimeout(()=>$('copy').textContent='複製檔名',1400);
 };
+
+/* ---------- Google 雲端同步（Drive appDataFolder），跟「報表進度小幫手」同一套做法 ----------
+ * 同步整包：工作日誌、公文目錄、逾期規定、逾期扣罰、廠商對照、贅詞清單。
+ * 每台電腦各自的最新時間(updated)誰大誰贏；內容其實相同就不跳提示；
+ * 兩邊都有新改動又兜不起來時才問使用者要留哪邊，整包覆蓋（不是逐欄位合併）。
+ */
+const CLIENT_ID_DEFAULT = '';   // 填入後，其他電腦不用再設定；跟「報表進度小幫手」同網域，可以共用同一組
+const GFILE = 'doc-naming-helper-data.json';
+const clientId = () => (store.get('gw_cid','') || CLIENT_ID_DEFAULT).trim();
+let gTok=null, gExp=0, gTC=null, gFileId=null, pushT=null, syncing=false;
+const gOK = () => gTok && Date.now() < gExp-60000;
+function setSync(t,err){ const s=$('syncStatus'); if(!s) return; s.textContent=t; s.style.color=err?'#c0392b':'var(--sub)'; }
+function hasLocalData(){ return history.length>0 || controlRows.length>0 || ctrlRules.length>0 || ctrlPenalty.length>0; }
+function localSnapshot(){ return { noise:$('noise').value, hist:history, ctrl:controlRows, rules:ctrlRules, penalty:ctrlPenalty, vendorMap }; }
+function dataOnly(o){ return { noise:o.noise, hist:o.hist, ctrl:o.ctrl, rules:o.rules, penalty:o.penalty, vendorMap:o.vendorMap }; }   // 固定欄位順序，才能正確比對雲端/本機內容是否真的相同
+function touch(){
+  store.set('gw_mod', String(Math.max(Date.now(), +store.get('gw_last','0')+1)));   // 避免電腦時鐘較慢時推不上去
+  if(store.get('gw_g','')!=='1') return;
+  if(!gOK()){ setSync('尚未同步到 Google（按「重新連線 Google」）',true); return; }
+  clearTimeout(pushT); pushT=setTimeout(()=>syncNow(),2000);
+}
+function gInit(){
+  if(gTC) return true;
+  if(!clientId()||!(window.google&&google.accounts)) return false;
+  gTC=google.accounts.oauth2.initTokenClient({client_id:clientId(),scope:'https://www.googleapis.com/auth/drive.appdata',callback:onTok});
+  return true;
+}
+function updateBtn(){
+  const on=store.get('gw_g','')==='1', b=$('btnG'); if(!b) return;
+  b.textContent = !on ? 'Google 登入同步' : gOK() ? '登出 Google' : '重新連線 Google';
+}
+async function onTok(r){
+  if(r.error){
+    if(r.error==='interaction_required'||r.error==='access_denied'||r.error==='popup_closed')
+      setSync(store.get('gw_g','')==='1'?'需要重新連線 Google（按右上方按鈕）':'已取消登入',true);
+    else setSync('Google 登入失敗：'+r.error,true);
+    updateBtn(); return;
+  }
+  gTok=r.access_token; gExp=Date.now()+(r.expires_in||3600)*1000; store.set('gw_g','1');
+  try{ const a=await (await gfetch('https://www.googleapis.com/drive/v3/about?fields=user(emailAddress)')).json(); if(a.user) store.set('gw_gmail',a.user.emailAddress); }catch(e){}
+  updateBtn(); syncNow();
+}
+function gLogin(prompt){
+  if(!clientId()){ $('gset').open=true; $('gset').scrollIntoView({block:'center'}); setSync('請先貼上 Google OAuth 用戶端 ID',true); return; }
+  if(!gInit()){ setSync('Google 元件尚未載入，請確認網路後重新整理',true); return; }
+  gTC.requestAccessToken({prompt});
+}
+async function gfetch(url,opt={}){
+  const r=await fetch(url,Object.assign({},opt,{headers:Object.assign({Authorization:'Bearer '+gTok},opt.headers||{})}));
+  if(r.status===401){ gTok=null; updateBtn(); throw new Error('登入已過期'); }
+  if(!r.ok) throw new Error('Google Drive 回應 '+r.status);
+  return r;
+}
+async function gFind(){
+  const q=encodeURIComponent(`name='${GFILE}'`);
+  const j=await (await gfetch(`https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=${q}&fields=files(id)`)).json();
+  return j.files&&j.files[0]?j.files[0].id:null;
+}
+async function gPull(){
+  gFileId=await gFind(); if(!gFileId) return null;
+  return await (await gfetch(`https://www.googleapis.com/drive/v3/files/${gFileId}?alt=media`)).json();
+}
+async function gPush(){
+  let mod=+store.get('gw_mod','0'); if(!mod){ mod=Date.now(); store.set('gw_mod',String(mod)); }
+  const body=JSON.stringify(Object.assign({updated:mod}, localSnapshot()));
+  if(!gFileId) gFileId=await gFind();
+  if(gFileId){
+    await gfetch(`https://www.googleapis.com/upload/drive/v3/files/${gFileId}?uploadType=media`,{method:'PATCH',headers:{'Content-Type':'application/json'},body});
+  }else{
+    const b='gwb'+Date.now();
+    const mp=`--${b}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify({name:GFILE,parents:['appDataFolder']})}\r\n--${b}\r\nContent-Type: application/json\r\n\r\n${body}\r\n--${b}--`;
+    const j=await (await gfetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',{method:'POST',headers:{'Content-Type':'multipart/related; boundary='+b},body:mp})).json();
+    gFileId=j.id;
+  }
+  store.set('gw_last',String(mod));
+}
+function takeRemote(rem){
+  if(rem.noise!=null){ $('noise').value=rem.noise; store.set('gw_noise',rem.noise); }
+  if(Array.isArray(rem.hist)){ history=rem.hist; store.set('gw_hist',JSON.stringify(history)); }
+  if(Array.isArray(rem.ctrl)){ controlRows=rem.ctrl; store.set('gw_ctrl',JSON.stringify(controlRows)); }
+  if(Array.isArray(rem.rules)){ ctrlRules=rem.rules; store.set('gw_rules',JSON.stringify(ctrlRules)); }
+  if(Array.isArray(rem.penalty)){ ctrlPenalty=rem.penalty; store.set('gw_penalty',JSON.stringify(ctrlPenalty)); }
+  if(rem.vendorMap && typeof rem.vendorMap==='object'){ vendorMap=rem.vendorMap; store.set('gw_vendormap',JSON.stringify(vendorMap)); }
+  store.set('gw_mod',String(rem.updated)); store.set('gw_last',String(rem.updated));
+  render(); renderHistory(); renderCtrlSummary(); renderDirGrid(); renderRuleGrid(); renderPenaltyGrid();
+}
+async function syncNow(){
+  if(syncing||!gOK()) return; syncing=true; clearTimeout(pushT);
+  try{
+    setSync('同步中…');
+    const rem=await gPull();
+    const mod=+store.get('gw_mod','0'), last=+store.get('gw_last','0');
+    const local=hasLocalData();
+    let msg='已與 Google 同步';
+    if(!rem){ if(local) await gPush(); }
+    else if(rem.updated===last){ if(mod>last) await gPush(); }
+    else if(!local){ takeRemote(rem); msg='已從 Google 載入資料'; }
+    else if(JSON.stringify(dataOnly(rem))===JSON.stringify(dataOnly(localSnapshot()))){
+      store.set('gw_mod',String(rem.updated)); store.set('gw_last',String(rem.updated));
+    }
+    else if(mod>last){
+      if(confirm('Google 雲端與這台電腦的公文管制資料不同。\n\n按「確定」＝用雲端版本取代這台電腦的內容\n按「取消」＝用這台電腦的內容覆蓋雲端')){ takeRemote(rem); msg='已從 Google 載入資料'; }
+      else{ store.set('gw_mod',String(Date.now())); await gPush(); msg='已用這台的內容覆蓋雲端'; }
+    }
+    else{ takeRemote(rem); msg='已載入其他電腦的最新內容'; }
+    const em=store.get('gw_gmail','');
+    setSync(`${msg}${em?'（'+em+'）':''}　${new Date().toLocaleTimeString('zh-TW',{hour12:false})}`);
+  }catch(e){ setSync('同步失敗：'+(e.message||e),true); }
+  finally{ syncing=false; updateBtn(); }
+}
+$('btnG').addEventListener('click',()=>{
+  if(store.get('gw_g','')==='1' && gOK()){
+    if(!confirm('登出 Google 後，這台電腦不再自動同步（本機資料與雲端資料都保留）。確定登出？')) return;
+    try{ google.accounts.oauth2.revoke(gTok); }catch(e){}
+    gTok=null; store.set('gw_g',''); store.set('gw_gmail',''); setSync('已登出 Google 同步'); updateBtn();
+  }else gLogin(store.get('gw_g','')==='1'?'':'consent');
+});
+$('cid').value = clientId();
+$('cidSave').addEventListener('click',()=>{ store.set('gw_cid',$('cid').value.trim()); gTC=null; setSync('已儲存用戶端 ID，請按「Google 登入同步」'); });
+function gBoot(){
+  updateBtn();
+  if(store.get('gw_g','')==='1' && clientId() && gInit()){ setSync('正在連線 Google…'); gTC.requestAccessToken({prompt:'none'}); }
+}
+window.addEventListener('load',()=>{
+  const sc=document.createElement('script'); sc.src='https://accounts.google.com/gsi/client'; sc.async=true; sc.onload=gBoot;
+  document.head.appendChild(sc); updateBtn();
+});
 
 /* ---------- 初始化 ---------- */
 $('noise').value = store.get('gw_noise', DEFAULT_NOISE.join('\n'));
