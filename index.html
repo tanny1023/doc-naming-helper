@@ -110,18 +110,19 @@ table.sheet tr.overdue td{background:rgba(192,57,43,.08)}
         <span class="hint" id="count"></span>
       </div>
       <div class="sheet-wrap" style="overflow-x:auto">
-        <table class="sheet" style="table-layout:auto;min-width:1100px">
-          <thead><tr><th style="width:34px"></th><th>原檔名</th><th>發文日期</th><th>收文日期</th><th>來文字號</th><th>公文文號</th><th>新檔名（可修改）</th><th>狀態</th></tr></thead>
+        <table class="sheet" style="table-layout:auto;min-width:700px">
+          <thead><tr><th style="width:34px"></th><th style="width:38%">原檔名</th><th>新檔名（可修改）</th></tr></thead>
           <tbody id="tb"></tbody>
         </table>
       </div>
-      <p class="hint">黃色欄位＝PDF 裡沒讀到，請手動補上。PDF 上的收文章日期有時是列印當天，不一定是真正收文日，可直接改。</p>
+      <p class="hint">黃色新檔名＝PDF 裡有欄位沒讀到，請直接改檔名。PDF 上的收文章日期有時是列印當天，不一定是真正收文日，需要的話也直接改檔名。</p>
     </div>
 
     <details>
       <summary>設定（去贅詞清單、Google 同步）</summary>
       <label for="noise">要從主旨移除的贅詞（一行一個）</label>
       <textarea id="noise"></textarea>
+      <button type="button" class="ghost" id="btnRename" style="margin-top:6px" title="用目前的贅詞清單，把上面清單裡所有檔案的新檔名重新產生一次（你手動改過的也會被重新產生）">重新命名</button>
 
       <label style="margin-top:16px">跨裝置同步（工作日誌、公文管制表、逾期規定、逾期扣罰、贅詞清單全部一起同步）</label>
       <button class="ghost" id="btnG" type="button" style="margin-top:4px">Google 登入同步</button>
@@ -347,17 +348,15 @@ async function processEntries(entries){
   setStatus(`讀完了，共 ${rows.length} 個檔案。請核對新檔名後按「套用改名」。`,'ok');
 }
 
-function refreshNames(){ rows.forEach(r=>{ if(!r.manual) r.newName = buildName(r); }); renderRows(); }
+function refreshNames(force){ rows.forEach(r=>{ if(force || !r.manual){ r.manual = false; r.newName = buildName(r); } }); renderRows(); }
 function renderRows(){
   $('tb').innerHTML = rows.map((r,i)=>{
-    const cell = (k,ph)=>`<td><input type="text" data-i="${i}" data-k="${k}" value="${esc(r[k]||'').replace(/"/g,'&quot;')}" placeholder="${ph}" class="${(r[k]||'').trim()?'':'need'}" style="min-width:${k==='ref'?150:k==='doc'?125:100}px"></td>`;
     const ok = r.state==='已改名'||r.state==='已下載'||/已記/.test(r.state);
+    const miss = !r.newName || isMissing(r);
     return `<tr>
       <td><input type="checkbox" data-i="${i}" data-k="sel" ${r.sel?'checked':''}></td>
-      <td style="font-size:12px;color:var(--sub);word-break:break-all;min-width:170px">${esc(r.oldName)}</td>
-      ${cell('send','115/10/13')}${cell('recv','115/10/14')}${cell('ref','九典字第…號')}${cell('doc','P1115…')}
-      <td><input type="text" data-i="${i}" data-k="newName" value="${esc(r.newName).replace(/"/g,'&quot;')}" style="min-width:380px" class="${r.newName?'':'need'}"></td>
-      <td style="white-space:nowrap;color:${ok?'var(--ok)':'var(--warn)'}">${esc(r.state)}</td></tr>`;
+      <td style="font-size:12.5px;color:var(--sub);word-break:break-all">${esc(r.oldName)}</td>
+      <td><input type="text" data-i="${i}" data-k="newName" value="${esc(r.newName).replace(/"/g,'&quot;')}" class="${miss?'need':''}">${r.state?`<div class="hint" style="margin:2px 0 0;color:${ok?'var(--ok)':'var(--warn)'}">${esc(r.state)}</div>`:''}</td></tr>`;
   }).join('');
   const n = rows.filter(r=>r.sel).length;
   $('count').textContent = rows.length ? `已勾選 ${n} / ${rows.length}` : '';
@@ -913,15 +912,12 @@ drop.addEventListener('drop',e=>fromFiles(e.dataTransfer.files));
 
 $('tb').addEventListener('input',e=>{
   const t = e.target, r = rows[t.dataset.i]; if(!r) return;
-  const k = t.dataset.k;
-  if(k==='sel'){ r.sel = t.checked; $('count').textContent = `已勾選 ${rows.filter(x=>x.sel).length} / ${rows.length}`; $('btnApply').disabled = $('btnLogOnly').disabled = !rows.some(x=>x.sel); return; }
-  r[k] = t.value;
-  if(k==='newName'){ r.manual = true; t.classList.toggle('need', !t.value.trim()); }
-  else{
-    r.manual = false; r.newName = buildName(r);
-    const nm = t.closest('tr').querySelector('[data-k=newName]'); nm.value = r.newName; nm.classList.toggle('need', !r.newName);
-    t.classList.toggle('need', !t.value.trim());
-  }
+  if(t.dataset.k==='sel'){ r.sel = t.checked; $('count').textContent = `已勾選 ${rows.filter(x=>x.sel).length} / ${rows.length}`; $('btnApply').disabled = $('btnLogOnly').disabled = !rows.some(x=>x.sel); return; }
+  r.newName = t.value; r.manual = true; t.classList.toggle('need', !t.value.trim());
+});
+$('btnRename').addEventListener('click',()=>{
+  if(!rows.length){ setStatus('還沒有讀入檔案，請先選資料夾。','err'); return; }
+  refreshNames(true); setStatus('已用目前的贅詞清單重新產生所有新檔名。','ok');
 });
 $('omitSame').addEventListener('input',refreshNames);
 $('btnAll').addEventListener('click',()=>{ const v = !rows.every(r=>r.sel); rows.forEach(r=>r.sel = v); renderRows(); });
