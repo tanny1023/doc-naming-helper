@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>公文截圖命名助手</title>
+<title>公文自動命名及管制系統</title>
 <style>
 :root{
   --bg:#f5f6f8; --card:#fff; --ink:#1c2330; --sub:#5d6778; --line:#dde1e8;
@@ -81,85 +81,76 @@ table.sheet tr.overdue td{background:rgba(192,57,43,.08)}
 <body>
 <div class="wrap" id="outerWrap">
   <div class="seg nav" role="group" aria-label="頁面">
-    <button id="navA" aria-pressed="true">公文截圖命名</button>
+    <button id="navA" aria-pressed="true">公文自動命名</button>
     <button id="navB" aria-pressed="false">公文管制表</button>
   </div>
 
 <section id="pageA">
-  <h1>公文截圖命名助手</h1>
-  <p class="lead">把公文截圖貼上（Ctrl+V），自動用內建 OCR 辨識欄位並產出檔案名稱。辨識結果可直接修改，檔名會即時更新；覺得辨識不準可按「重新辨識」再跑一次。</p>
+  <h1>公文自動命名及管制系統</h1>
+  <p class="lead">選一個放公文 PDF 的資料夾，程式直接讀每份 PDF 第一頁的文字（不用截圖、不用 OCR），依「發文日(收訖日)-發文字號-公文文號-精簡主旨」產生檔名，核對後一次把原檔改名。檔案不會上傳也不用下載，全程在這台電腦的瀏覽器處理。改名成功的公文會自動記進下方工作日誌，確認後再按「匯入管制表」。</p>
 
-  <div class="grid">
-    <!-- 左：截圖 -->
-    <div class="card">
-      <div class="seg" role="group" aria-label="截圖格式">
-        <button id="m1" aria-pressed="false">方法一：PDF 格式</button>
-        <button id="m2" aria-pressed="true">方法二：公文系統</button>
+  <div class="card">
+    <div class="gridtools">
+      <button type="button" class="primary" id="btnDir" style="margin-top:0">選擇資料夾（直接改原檔名）</button>
+      <button type="button" class="ghost" id="btnFiles">選擇多個PDF（只能下載新名字的複本）</button>
+      <div class="chk" style="margin:0"><input type="checkbox" id="omitSame" checked><label for="omitSame" style="margin:0;color:var(--ink)">發文日與收文日相同時，省略「收訖」</label></div>
+      <div class="chk" style="margin:0"><input type="checkbox" id="skipNamed" checked><label for="skipNamed" style="margin:0;color:var(--ink)">略過已命名好的檔案</label></div>
+      <div class="chk" style="margin:0"><input type="checkbox" id="autoLog" checked><label for="autoLog" style="margin:0;color:var(--ink)">改名後自動記進工作日誌</label></div>
+    </div>
+    <div id="drop" tabindex="0" style="min-height:70px">也可以把 PDF 檔拖到這裡（拖曳進來的檔案瀏覽器改不了原檔，只能下載新名字的複本）</div>
+    <input type="file" id="file" accept=".pdf,application/pdf" multiple hidden>
+    <div class="status" id="status"></div>
+    <div class="bar" id="bar"><i></i></div>
+
+    <div id="listBox" hidden>
+      <div class="gridtools" style="margin-top:12px">
+        <button type="button" class="primary" id="btnApply" style="margin-top:0" disabled>套用改名</button>
+        <button type="button" class="ghost" id="btnLogOnly" title="不改檔名，只把勾選的公文記進工作日誌">只記進工作日誌（不改名）</button>
+        <button type="button" class="ghost" id="btnAll">全選／取消</button>
+        <span class="hint" id="count"></span>
       </div>
-      <div id="drop" tabindex="0" title="點一下後按 Ctrl+V，或拖曳圖片進來">
-        <div id="dropHint"><b>在此貼上截圖（Ctrl+V）</b>也可以拖曳圖片，或點一下選擇檔案</div>
+      <div class="sheet-wrap" style="overflow-x:auto">
+        <table class="sheet" style="table-layout:auto;min-width:1100px">
+          <thead><tr><th style="width:34px"></th><th>原檔名</th><th>發文日期</th><th>收文日期</th><th>來文字號</th><th>公文文號</th><th>新檔名（可修改）</th><th>狀態</th></tr></thead>
+          <tbody id="tb"></tbody>
+        </table>
       </div>
-      <input type="file" id="file" accept="image/*" hidden>
-      <div class="status" id="status"></div>
-      <div class="bar" id="bar"><i></i></div>
-      <button type="button" id="rerun" class="ghost" style="display:none;margin-top:8px">重新辨識這張截圖</button>
-
-      <details>
-        <summary>設定（去贅詞清單、Google 同步）</summary>
-        <p class="hint" style="margin-top:0">辨識方式固定使用內建 OCR：完全免費、在你的瀏覽器裡執行，截圖不會上傳到任何伺服器。</p>
-        <label for="noise">要從主旨移除的贅詞（一行一個）</label>
-        <textarea id="noise"></textarea>
-
-        <label style="margin-top:16px">跨裝置同步（工作日誌、公文管制表、逾期規定、逾期扣罰、贅詞清單全部一起同步）</label>
-        <button class="ghost" id="btnG" type="button" style="margin-top:4px">Google 登入同步</button>
-        <div class="status" id="syncStatus" style="color:var(--sub)"></div>
-        <details id="gset" style="margin-top:8px">
-          <summary>Google 同步設定（第一次使用才需要）</summary>
-          <p class="hint">登入後資料會存到您 Google 雲端硬碟的隱藏「應用程式資料」區，換電腦登入同一個 Google 帳號就能看到。需要一組 OAuth 用戶端 ID：</p>
-          <ol class="hint" style="margin:4px 0 8px;padding-left:20px">
-            <li>到 console.cloud.google.com 建立專案，「API 和服務」→「程式庫」啟用 <b>Google Drive API</b>。</li>
-            <li>「OAuth 同意畫面」選「外部」，填應用程式名稱與您的 Email；建議按「發布應用程式」（只用 drive.appdata 權限，不需審核；留在測試狀態每 7 天要重新授權）。</li>
-            <li>「憑證」→「建立憑證」→「OAuth 用戶端 ID」→ 類型選「網頁應用程式」，「已授權的 JavaScript 來源」填 <b>https://tanny1023.github.io</b>。</li>
-            <li>把產生的「用戶端 ID」貼到下面，按儲存，再按「Google 登入同步」。如果您已經在「報表進度小幫手」設定過同一組，這裡可以直接貼同一個 ID（同一個網域可以共用）。</li>
-          </ol>
-          <div style="display:flex;gap:8px"><input type="text" id="cid" placeholder="xxxxxxxx.apps.googleusercontent.com"><button class="ghost" id="cidSave">儲存</button></div>
-        </details>
-      </details>
+      <p class="hint">黃色欄位＝PDF 裡沒讀到，請手動補上。PDF 上的收文章日期有時是列印當天，不一定是真正收文日，可直接改。</p>
     </div>
 
-    <!-- 右：欄位與結果 -->
-    <div class="card">
-      <div class="row2">
-        <div><label for="fSend" id="lSend">來文日期</label><input type="text" id="fSend" placeholder="115/04/02"></div>
-        <div><label for="fRecv">收文日期</label><input type="text" id="fRecv" placeholder="115/04/07"></div>
-      </div>
-      <div class="row2 r3">
-        <div><label for="fRef">來文字號</label><input type="text" id="fRef" placeholder="麗字第1150400048號"></div>
-        <div><label for="fDoc">公文文號</label><input type="text" id="fDoc" placeholder="P11150011116"></div>
-        <div><label for="fAtt">附件件數</label><input type="number" id="fAtt" min="0" value="0"></div>
-      </div>
-      <label for="fSubj">主旨（原文）</label>
-      <textarea id="fSubj" placeholder="檢送「臺中市巨蛋體育館興建工程」B3F層鋼筋工程施工圖…資料，惠請核復。"></textarea>
-      <div class="chk"><input type="checkbox" id="omitSame"><label for="omitSame" style="margin:0;color:var(--ink)">來文日期與收文日期相同時，省略「收訖」</label></div>
+    <details>
+      <summary>設定（去贅詞清單、Google 同步）</summary>
+      <label for="noise">要從主旨移除的贅詞（一行一個）</label>
+      <textarea id="noise"></textarea>
 
-      <div class="out">
-        <div class="hint" style="margin:0 0 4px">檔案名稱</div>
-        <div class="name" id="result">（尚無內容）</div>
-        <div class="len" id="len"></div>
-        <button class="primary" id="copy">複製檔名</button>
-      </div>
-
-      <details open>
-        <summary>公文管制（按「複製檔名」記錄；確認後按「匯入管制表」存進去，進階編輯請到「公文管制表」頁）</summary>
-
-        <input type="file" id="importFile" accept=".xlsx,.xls" hidden>
-
-        <div style="display:flex;justify-content:flex-end;margin-top:14px">
-          <button type="button" id="clearHist" class="ghost">清空全部紀錄</button>
-        </div>
-        <div id="hist"></div>
+      <label style="margin-top:16px">跨裝置同步（工作日誌、公文管制表、逾期規定、逾期扣罰、贅詞清單全部一起同步）</label>
+      <button class="ghost" id="btnG" type="button" style="margin-top:4px">Google 登入同步</button>
+      <div class="status" id="syncStatus" style="color:var(--sub)"></div>
+      <details id="gset" style="margin-top:8px">
+        <summary>Google 同步設定（第一次使用才需要）</summary>
+        <p class="hint">登入後資料會存到您 Google 雲端硬碟的隱藏「應用程式資料」區，換電腦登入同一個 Google 帳號就能看到。需要一組 OAuth 用戶端 ID：</p>
+        <ol class="hint" style="margin:4px 0 8px;padding-left:20px">
+          <li>到 console.cloud.google.com 建立專案，「API 和服務」→「程式庫」啟用 <b>Google Drive API</b>。</li>
+          <li>「OAuth 同意畫面」選「外部」，填應用程式名稱與您的 Email；建議按「發布應用程式」（只用 drive.appdata 權限，不需審核；留在測試狀態每 7 天要重新授權）。</li>
+          <li>「憑證」→「建立憑證」→「OAuth 用戶端 ID」→ 類型選「網頁應用程式」，「已授權的 JavaScript 來源」填 <b>https://tanny1023.github.io</b>。</li>
+          <li>把產生的「用戶端 ID」貼到下面，按儲存，再按「Google 登入同步」。如果您已經在「報表進度小幫手」設定過同一組，這裡可以直接貼同一個 ID（同一個網域可以共用）。</li>
+        </ol>
+        <div style="display:flex;gap:8px"><input type="text" id="cid" placeholder="xxxxxxxx.apps.googleusercontent.com"><button class="ghost" id="cidSave">儲存</button></div>
       </details>
-    </div>
+    </details>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <details open style="margin-top:0">
+      <summary>工作日誌（改名成功的公文會記在這裡；確認、刪掉不要的之後按「匯入管制表」存進公文管制表，進階編輯請到「公文管制表」頁）</summary>
+
+      <input type="file" id="importFile" accept=".xlsx,.xls" hidden>
+
+      <div style="display:flex;justify-content:flex-end;margin-top:14px">
+        <button type="button" id="clearHist" class="ghost">清空全部紀錄</button>
+      </div>
+      <div id="hist"></div>
+    </details>
   </div>
 </section>
 
@@ -204,8 +195,7 @@ table.sheet tr.overdue td{background:rgba(192,57,43,.08)}
 <script>
 const $ = id => document.getElementById(id);
 const DEFAULT_NOISE = ['請查照','詳如說明','敬請查核','敬請查照','敬請核備','惠請核復','敬請核復','敬請核定','惠請核定'];
-let mode = 2;
-let currentBlob = null;
+const EXTRA_NOISE = ['敬請備查','敬請查收','請核備','請備查'];   // 不論使用者怎麼改清單都一定移除
 
 /* ---------- 設定存取 ---------- */
 const store = {
@@ -231,87 +221,58 @@ function cleanSubject(raw){
   s = s.replace(/\s+(?=[㐀-鿿（(「])|(?<=[㐀-鿿）)」，。])\s+/g,'');   // 中文間多餘空白
   // 工程案名（含後面括號內的地址），連同引號一起移除
   s = s.replace(/[「『"“'‘]?(?:(?:臺|台)中市)?巨蛋(?:體育館|體育場)?(?:興建)?工程(?:[（(][^）)]*[）)])?[」』"”'’]?/g,'');
+  s = s.replace(/[（(]契約案號[:：][^）)]*[）)]/g,'');          // 公文主旨常帶的「(契約案號：112A-040)」
   // 協力廠商說明
   s = s.replace(/共同承攬商.*?提送之/g,'');
   s = s.replace(/(?:股份)?有限公司/g,'');
-  // 贅詞
-  const noise = $('noise').value.split('\n').map(x=>x.trim()).filter(Boolean)
+  // 贅詞（使用者清單＋內建的備查／查收類套語）
+  const noise = [...new Set([...$('noise').value.split('\n').map(x=>x.trim()).filter(Boolean), ...EXTRA_NOISE])]
     .sort((a,b)=>b.length-a.length);
   for(const w of noise){ s = s.split(w).join(''); }
   s = s.replace(/[，,]\S{0,3}請(?:核定|核復|核備|核示|查核|查照)。?$/,'');   // 句尾收尾套語（容忍 OCR 錯字，如「,人稅請核定」）
   s = s.replace(/[「」『』]/g,'');
   s = s.replace(/[\\\/:*?"<>|]/g,'');                       // 檔名不允許的字元
+  s = s.replace(/(資料|文件){2,}/g,'$1');                    // 原文偶爾重複打字，例如「資料資料」
   s = s.replace(/[，,、;；]{2,}/g,'，').replace(/^[，,、;；。.\s]+|[，,、;；。.\s]+$/g,'');
   return s;
 }
 
-/* ---------- 組檔名 ---------- */
-function buildName(){
-  const send = parseDate($('fSend').value), recv = parseDate($('fRecv').value);
-  const ref = $('fRef').value.trim().replace(/\s+/g,''), doc = $('fDoc').value.trim().replace(/\s+/g,'');
-  const att = parseInt($('fAtt').value,10)||0;
-  let subj = cleanSubject($('fSubj').value);
-
-  const main = send || recv;
-  let date = main ? full(main) : '';
-  if(main && recv && (main!==recv) && !(main.y===recv.y&&main.m===recv.m&&main.d===recv.d && $('omitSame').checked)){
-    date += `(${mmdd(recv)}收訖)`;
-  }
-
-  if(mode===1){
-    subj += att>0 ? '(有附件)' : '(無附件)';
-  }else if(att>0 && !subj.includes('(附件)') && !subj.includes('（附件）')){
-    subj += '(附件)';
-  }
-  const name = [date, ref, doc, subj].filter(Boolean).join('-')
-    .replace(/[\\\/:*?"<>|]/g,'');
-  return name;
-}
-
-function render(){
-  const n = buildName();
-  $('result').textContent = n || '（尚無內容）';
-  $('len').textContent = n ? `${n.length} 字` : '';
-}
-
-/* ---------- 欄位擷取（OCR 文字） ---------- */
-function findRef(flat, isSystem){
-  const fmt = m => `${m[1]}字第${m[2]}號`;
-  // 1) 「來文字號／發文字號」標籤後面
-  let m = flat.match(/(?:來文|發文)?字號[:：;]?([一-鿿]{1,8}?)字第*(\d{6,})號?/);
-  if(m) return fmt(m);
-  // 2) 全文找「XX字第NNN號」；PDF 只看「主旨」之前，避免抓到說明文字裡引用的其他公文
-  const head = isSystem ? flat : flat.split('主旨')[0];
-  const all = [...head.matchAll(/([一-鿿]{1,8}?)字第*(\d{6,})號?/g)];
-  if(all.length) return fmt(all[0]);
-  // 3) 標籤後直接是數字（機關字被 OCR 吃掉）
-  m = flat.match(/(?:來文|發文)?字號[:：;]?[^\d]{0,10}(\d{9,})/);
-  return m ? m[1] : '';
-}
+/* ---------- PDF 欄位擷取（第一頁文字） ---------- */
 function extractFromText(text){
   const t = text.replace(/[ \t　]+/g,'');
-  const out = {};
-  const isSystem = /收文資訊|公文文號|附件件數|來文機關/.test(t);
-  out.mode = isSystem ? 2 : 1;
-  const mDoc = t.match(/P\d{9,12}/i); if(mDoc) out.doc = mDoc[0].toUpperCase();
-  const ref = findRef(text.replace(/\s+/g,''), isSystem);   // 換行、空白、「第」重複都容忍
-  if(ref) out.ref = ref;
-  if(isSystem){
-    let m = t.match(/來文日期[:：]?(\d{2,3}[\/.]\d{1,2}[\/.]\d{1,2})/); if(m) out.send = m[1];
-    m = t.match(/收文日期[:：]?(\d{2,3}[\/.]\d{1,2}[\/.]\d{1,2})/); if(m) out.recv = m[1];
-    m = t.match(/附件件數[:：]?(\d+)/); if(m) out.att = +m[1];
-    m = t.match(/主旨[:：]?([\s\S]+?)(?:來文機關|主辦單位|主辦人員|限辦日期|簽核|決行|補正|$)/); if(m) out.subj = m[1];
-  }else{
-    let m = t.match(/發文日期[:：]?中華民國(\d{2,3})年(\d{1,2})月(\d{1,2})日/); if(m) out.send = `${m[1]}/${m[2]}/${m[3]}`;
-    m = t.match(/收文[:：]?(\d{2,3}[\/.]\d{1,2}[\/.]\d{1,2})/); if(m) out.recv = m[1];
-    m = t.match(/主旨[:：]?([\s\S]+?)(?:說明[:：]|正本[:：]|副本[:：]|$)/); if(m) out.subj = m[1];
-    m = t.match(/附件[:：]([^\n]+)/);
-    if(m) out.att = /無/.test(m[1]) ? 0 : 1;
+  const o = {};
+  let m = t.match(/P\d{9,12}/i); if(m) o.doc = m[0].toUpperCase();
+  const flat = text.replace(/\s+/g,'');
+  m = flat.match(/(?:來文|發文)?字號[:：;]?([一-鿿]{1,8}?)字第*(\d{6,})號?/);
+  if(m) o.ref = `${m[1]}字第${m[2]}號`;
+  else{                                           // 只看「主旨」之前，避免抓到說明文字裡引用的其他公文
+    const all = [...flat.split('主旨')[0].matchAll(/([一-鿿]{1,8}?)字第*(\d{6,})號?/g)];
+    if(all.length) o.ref = `${all[0][1]}字第${all[0][2]}號`;
   }
-  return out;
+  m = t.match(/發文日期[:：]?中華民國(\d{2,3})年(\d{1,2})月(\d{1,2})日/); if(m) o.send = `${m[1]}/${m[2]}/${m[3]}`;
+  m = t.match(/收文[:：]?(\d{2,3}[\/.]\d{1,2}[\/.]\d{1,2})/); if(m) o.recv = m[1];
+  m = t.match(/主旨[:：]?([\s\S]+?)(?:說明[:：]|正本[:：]|副本[:：]|$)/); if(m) o.subj = m[1];
+  o.att = /有附件/.test(t) ? 1 : 0;
+  return o;
 }
 
-/* ---------- 辨識：內建 OCR ---------- */
+/* ---------- 組檔名 ---------- */
+const NAMED_RE = /^\d{7}(\(\d{4}收訖\))?-.+字第\d+號-P\d{9,12}-/;     // 已經是「日期-字號-文號-主旨」格式的檔名
+function buildName(r){
+  const send = parseDate(r.send), recv = parseDate(r.recv);
+  const main = send || recv;
+  let date = main ? full(main) : '';
+  if(main && recv){
+    const same = main.y===recv.y && main.m===recv.m && main.d===recv.d;
+    if(!(same && $('omitSame').checked)) date += `(${mmdd(recv)}收訖)`;
+  }
+  let subj = cleanSubject(r.subj).replace(/[，,、;；。]/g,'');         // 範例檔名的主旨都不留逗號
+  if(r.att>0 && !/[（(]附件[）)]/.test(subj)) subj += '(附件)';
+  return [date, (r.ref||'').replace(/\s+/g,''), (r.doc||'').replace(/\s+/g,''), subj].filter(Boolean).join('-')
+    .replace(/[\\\/:*?"<>|]/g,'');
+}
+
+/* ---------- 共用：載入外部元件、狀態列 ---------- */
 function loadScript(src, checkGlobal){
   return new Promise((res,rej)=>{
     if(checkGlobal && checkGlobal()) return res();
@@ -319,144 +280,141 @@ function loadScript(src, checkGlobal){
     document.head.appendChild(s);
   });
 }
-async function toCanvas(blob){                   // 小圖放大後 OCR 較準
-  const bmp = await createImageBitmap(blob);
-  const k = bmp.width>=1400 ? 1 : Math.min(3, 1400/bmp.width), c = document.createElement('canvas');
-  c.width = Math.round(bmp.width*k); c.height = Math.round(bmp.height*k);
-  const g = c.getContext('2d'); g.imageSmoothingQuality='high'; g.drawImage(bmp,0,0,c.width,c.height);
-  return c;
-}
-function cropCanvas(src,x,y,w,h,k){
-  x=Math.max(0,Math.round(x)); y=Math.max(0,Math.round(y));
-  w=Math.min(src.width-x,Math.round(w)); h=Math.min(src.height-y,Math.round(h));
-  const c=document.createElement('canvas'); c.width=Math.round(w*k); c.height=Math.round(h*k);
-  const g=c.getContext('2d'); g.imageSmoothingQuality='high'; g.fillStyle='#fff'; g.fillRect(0,0,c.width,c.height);
-  g.drawImage(src,x,y,w,h,0,0,c.width,c.height); return c;
-}
-// 在 OCR 的字詞位置中找出標籤（例如「來文字號」），回傳其外框
-function findLabel(words,label){
-  const chars=[]; words.forEach(w=>[...(w.text||'')].forEach(ch=>{ if(!/\s/.test(ch)) chars.push({ch,w}); }));
-  const seq=[...label];
-  for(let i=0;i<=chars.length-seq.length;i++){
-    if(seq.every((c,j)=>chars[i+j].ch===c)){
-      const ws=chars.slice(i,i+seq.length).map(o=>o.w.bbox);
-      return {x1:Math.max(...ws.map(b=>b.x1)), y0:Math.min(...ws.map(b=>b.y0)), y1:Math.max(...ws.map(b=>b.y1))};
-    }
-  }
-  return null;
-}
-async function runOCR(blob){
-  setStatus('載入 OCR 元件…（首次需下載中文語言包，約 10–20 秒）');
-  await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js', ()=>window.Tesseract);
-  const worker = await Tesseract.createWorker('chi_tra',1,{logger:m=>{
-    if(m.progress!=null){ setProgress(m.progress); setStatus(`OCR 辨識中… ${m.status} ${Math.round(m.progress*100)}%`); }
-  }});
-  try{
-    const cv = await toCanvas(blob);
-    const r = await worker.recognize(cv);
-    const out = extractFromText(r.data.text);
-    // 公文系統畫面：整頁 OCR 常漏掉小格子，改為裁出「來文字號」右邊那格放大重跑
-    if(out.mode===2 && !/字第\d{6,}號/.test(out.ref||'')){
-      const L = findLabel(r.data.words||[],'來文字號');
-      if(L){
-        setStatus('補強辨識「來文字號」…');
-        const h = L.y1-L.y0;
-        const crop = cropCanvas(cv, L.x1+6, L.y0-h*0.75, cv.width-L.x1-10, h*2.5, 3);
-        await worker.setParameters({tessedit_pageseg_mode:'6'});
-        const r2 = await worker.recognize(crop);
-        const ref = findRef(r2.data.text.replace(/\s+/g,''), true);
-        if(ref) out.ref = ref;
-      }
-    }
-    // 主旨：同樣裁出主旨那格放大重跑（整頁 OCR 容易混入雜字）
-    if(out.mode===2){
-      const flat = t => t.replace(/\s+/g,'');
-      const lines = r.data.lines||[];
-      const i0 = lines.findIndex(l=>/主旨/.test(flat(l.text)));
-      const L = findLabel(r.data.words||[],'主旨');
-      if(i0>=0 && L){
-        let i1 = lines.findIndex((l,i)=>i>i0 && /主辦單位|主辦人員|限辦日期/.test(flat(l.text)));
-        if(i1<0) i1 = Math.min(lines.length,i0+3);
-        const sel = lines.slice(i0,i1).map(l=>l.bbox);
-        const y0 = Math.min(...sel.map(b=>b.y0))-6, y1 = Math.max(...sel.map(b=>b.y1))+6;
-        setStatus('補強辨識「主旨」…');
-        const crop = cropCanvas(cv, L.x1+6, y0, cv.width-L.x1-12, y1-y0, 2.5);
-        await worker.setParameters({tessedit_pageseg_mode:'6'});
-        const r3 = await worker.recognize(crop);
-        const subj = flat(r3.data.text);
-        if(subj.length>=6) out.subj = subj;
-      }
-    }
-    return out;
-  }finally{ await worker.terminate(); }
-}
-
-/* ---------- 流程 ---------- */
 function setStatus(t,cls=''){
   const s=$('status'); s.textContent=t; s.className='status '+cls;
   const s2=$('status2'); if(s2){ s2.textContent=t; s2.className='status '+cls; }   // 公文管制表頁也要看得到提示
 }
 function setProgress(p){ const b=$('bar'); b.style.display=p==null?'none':'block'; if(p!=null) b.firstElementChild.style.width=(p*100)+'%'; }
 
-function setMode(m){
-  mode = m;
-  $('m1').setAttribute('aria-pressed', m===1);
-  $('m2').setAttribute('aria-pressed', m===2);
-  $('lSend').textContent = m===1 ? '發文日期（公文內）' : '來文日期';
-  $('omitSame').checked = (m===2);
-  render();
-}
-
-function fill(o){
-  if(o.mode) setMode(o.mode);
-  $('fSend').value = o.send||'';
-  $('fRecv').value = o.recv||'';
-  $('fRef').value  = o.ref||'';
-  $('fDoc').value  = o.doc||'';
-  $('fAtt').value  = o.att||0;
-  $('fSubj').value = (o.subj||'').replace(/\s*\n\s*/g,'');
-  render();
-}
-
-function showImage(blob){
-  currentBlob = blob;
-  const url = URL.createObjectURL(blob);
-  $('drop').innerHTML = `<img alt="已貼上的截圖" src="${url}">`;
-  $('rerun').style.display = 'inline-block';
-}
-
-// 辨識後，沒讀到的必填欄位用黃色標示；使用者填入後自動取消標示
-let ocrDone = false;
-const CHECK_IDS = ['fSend','fRecv','fRef','fDoc','fSubj'];
-function markMissing(){
-  CHECK_IDS.forEach(id=>{ const el=$(id); el.classList.toggle('need', !el.value.trim()); });
-}
-
-async function recognize(){
-  if(!currentBlob) return;
-  try{
-    setProgress(0);
-    const o = await runOCR(currentBlob);
-    fill(o);
-    ocrDone = true; markMissing();
-    setProgress(null);
-    const name = buildName();
-    if(name){
-      const miss = [['fSend','日期'],['fRef','來文字號'],['fDoc','公文文號'],['fSubj','主旨']]
-        .filter(([id])=>!$(id).value.trim()).map(x=>x[1]);
-      if(miss.length) setStatus(`未辨識到：${miss.join('、')}，請手動補上（黃色欄位）後再按「複製檔名」。`,'err');
-      else setStatus('辨識完成。請逐字核對欄位後再按「複製檔名」。','ok');
-    }else setStatus('沒有辨識到內容，請換一張截圖或手動輸入','err');
-  }catch(e){
-    setProgress(null);
-    setStatus(e.message||String(e),'err');
+/* ---------- 讀 PDF 第一頁 ---------- */
+const PDFJS_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
+let pdfBase = '';
+async function loadPdfJs(){
+  if(window.pdfjsLib) return;
+  for(const b of ['./lib/pdfjs/', PDFJS_CDN]){          // 有放本機 lib/pdfjs 就不用連網
+    try{
+      await loadScript(b+'pdf.min.js', ()=>window.pdfjsLib);
+      const w = await (await fetch(b+'pdf.worker.min.js')).text();      // worker 轉 blob，直接開 file:// 也能用
+      pdfjsLib.GlobalWorkerOptions.workerSrc = URL.createObjectURL(new Blob([w],{type:'text/javascript'}));
+      pdfBase = b; return;
+    }catch(e){ window.pdfjsLib = undefined; }
   }
+  throw new Error('無法載入 PDF 讀取元件，請確認網路連線');
+}
+async function firstPageText(buf){
+  const doc = await pdfjsLib.getDocument({data:buf, cMapUrl:pdfBase+'cmaps/', cMapPacked:true}).promise;
+  const tc = await (await doc.getPage(1)).getTextContent();
+  // 左邊裝訂線的「. 裝 訂 線」是單字元且 x 很小，會混進主旨，先濾掉
+  const items = tc.items.filter(i=>i.str && i.str.trim()!=='' && !(i.str.trim().length<=1 && i.transform[4]<60))
+    .map(i=>({s:i.str,x:i.transform[4],y:i.transform[5]}));
+  items.sort((a,b)=> Math.abs(a.y-b.y)>3 ? b.y-a.y : a.x-b.x);
+  const lines = []; let cur = null;
+  for(const it of items){
+    if(cur && Math.abs(cur.y-it.y)<=3) cur.parts.push(it);
+    else{ cur = {y:it.y, parts:[it]}; lines.push(cur); }
+  }
+  doc.destroy();
+  return lines.map(l=>l.parts.sort((a,b)=>a.x-b.x).map(p=>p.s).join('')).join('\n');
 }
 
-async function handleImage(blob){
-  if(!blob) return;
-  showImage(blob);
-  await recognize();
+/* ---------- 檔案清單 ---------- */
+let rows = [];            // {handle,file,oldName,send,recv,ref,doc,subj,att,newName,manual,sel,state}
+let dirHandle = null;
+const FIELD_KEYS = ['send','recv','ref','doc'];
+function isMissing(r){ return FIELD_KEYS.some(k=>!(r[k]||'').trim()) || !(r.subj||'').trim(); }
+
+async function processEntries(entries){
+  $('listBox').hidden = false;
+  rows = []; renderRows();
+  setStatus('載入 PDF 讀取元件…');
+  try{ await loadPdfJs(); }catch(e){ setStatus(e.message,'err'); return; }
+  let i = 0;
+  for(const e of entries){
+    i++; setProgress((i-1)/entries.length); setStatus(`讀取中 ${i}/${entries.length}：${e.name}`);
+    const r = {handle:e.handle||null, file:e.file||null, oldName:e.name, send:'',recv:'',ref:'',doc:'',subj:'',att:0, newName:'', manual:false, sel:true, state:''};
+    try{
+      r.file = e.file || await e.handle.getFile();
+      const txt = await firstPageText(await r.file.arrayBuffer());
+      Object.assign(r, extractFromText(txt));
+      if(!txt.trim()) r.state = '沒有文字層（掃描檔）';
+      else if(isMissing(r)) r.state = '欄位不全';
+      r.newName = buildName(r);
+      if($('skipNamed').checked && NAMED_RE.test(e.name)){ r.sel = false; r.state = '已命名'; }
+    }catch(err){ r.state = '讀取失敗'; r.sel = false; }
+    rows.push(r); renderRows();
+  }
+  setProgress(null);
+  setStatus(`讀完了，共 ${rows.length} 個檔案。請核對新檔名後按「套用改名」。`,'ok');
+}
+
+function refreshNames(){ rows.forEach(r=>{ if(!r.manual) r.newName = buildName(r); }); renderRows(); }
+function renderRows(){
+  $('tb').innerHTML = rows.map((r,i)=>{
+    const cell = (k,ph)=>`<td><input type="text" data-i="${i}" data-k="${k}" value="${esc(r[k]||'').replace(/"/g,'&quot;')}" placeholder="${ph}" class="${(r[k]||'').trim()?'':'need'}" style="min-width:${k==='ref'?150:k==='doc'?125:100}px"></td>`;
+    const ok = r.state==='已改名'||r.state==='已下載'||/已記/.test(r.state);
+    return `<tr>
+      <td><input type="checkbox" data-i="${i}" data-k="sel" ${r.sel?'checked':''}></td>
+      <td style="font-size:12px;color:var(--sub);word-break:break-all;min-width:170px">${esc(r.oldName)}</td>
+      ${cell('send','115/10/13')}${cell('recv','115/10/14')}${cell('ref','九典字第…號')}${cell('doc','P1115…')}
+      <td><input type="text" data-i="${i}" data-k="newName" value="${esc(r.newName).replace(/"/g,'&quot;')}" style="min-width:380px" class="${r.newName?'':'need'}"></td>
+      <td style="white-space:nowrap;color:${ok?'var(--ok)':'var(--warn)'}">${esc(r.state)}</td></tr>`;
+  }).join('');
+  const n = rows.filter(r=>r.sel).length;
+  $('count').textContent = rows.length ? `已勾選 ${n} / ${rows.length}` : '';
+  $('btnApply').disabled = !n;
+  $('btnLogOnly').disabled = !n;
+  $('btnApply').textContent = dirHandle ? '套用改名' : '下載新名字的複本';
+}
+
+/* ---------- 套用改名 ---------- */
+function safeName(n){ n = n.replace(/[\\\/:*?"<>|]/g,'').trim(); return /\.pdf$/i.test(n) ? n : n+'.pdf'; }
+async function fileExists(name){ try{ await dirHandle.getFileHandle(name); return true; }catch(e){ return false; } }
+async function renameOne(r){
+  const nn = safeName(r.newName);
+  if(nn===r.oldName) return '名稱沒變';
+  if(!dirHandle){
+    const a = document.createElement('a'); a.href = URL.createObjectURL(r.file); a.download = nn;
+    document.body.appendChild(a); a.click(); a.remove(); await new Promise(s=>setTimeout(s,250));
+    return '已下載';
+  }
+  if(await fileExists(nn)) throw new Error('同名檔案已存在');
+  if(r.handle.move) await r.handle.move(nn);
+  else{                                           // 舊版 Chrome 沒有 move()：複製成新檔再刪舊檔
+    const nh = await dirHandle.getFileHandle(nn,{create:true});
+    const w = await nh.createWritable(); await w.write(await r.handle.getFile()); await w.close();
+    await dirHandle.removeEntry(r.oldName);
+    r.handle = nh;
+  }
+  r.oldName = nn;
+  return '已改名';
+}
+
+// 記進工作日誌（對應原本按「複製檔名」）：只存公文文號＋主旨＋日期＋廠商，之後在日誌確認再匯入管制表
+function logRow(r){
+  const doc = (r.doc||'').trim(), subj = cleanSubject(r.subj);
+  if(!doc && !subj) return false;
+  addHistory(doc, subj, {
+    發文日期: toISODate(parseDate(r.send)),
+    收文日期: toISODate(parseDate(r.recv)),
+    廠商名稱: vendorFromRef((r.ref||'').trim())
+  });
+  return true;
+}
+
+async function applyRename(){
+  const todo = rows.filter(r=>r.sel && r.newName.trim());
+  let ok = 0, fail = 0, logged = 0;
+  for(const r of todo){
+    try{
+      r.state = await renameOne(r);
+      if(r.state==='已改名'||r.state==='已下載'||r.state==='名稱沒變'){
+        ok++; r.sel = false;
+        if($('autoLog').checked && logRow(r)){ logged++; r.state += '・已記日誌'; }
+      }
+    }catch(e){ r.state = '失敗：'+(e.message||e.name); fail++; }
+    renderRows();
+  }
+  setStatus(`完成：成功 ${ok} 個${fail?`，失敗 ${fail} 個`:''}${logged?`；${logged} 筆已記進工作日誌`:''}。`, fail?'err':'ok');
 }
 
 async function copyText(t){
@@ -468,19 +426,6 @@ async function copyText(t){
     }catch(e2){ return false; }
   }
 }
-async function copyAndLog(){                     // 複製檔名只先存進工作日誌（暫存），不直接寫進公文管制表；
-  const name = buildName();                      // 要等使用者在下面確認、刪掉不用的，再按「匯入管制表」才會真的寫入
-  const doc = $('fDoc').value.trim(), subj = cleanSubject($('fSubj').value);
-  if(doc || subj){
-    addHistory(doc, subj, {                       // 多存發文/收文日期、廠商名稱，之後匯入管制表時才有完整欄位
-      發文日期: toISODate(parseDate($('fSend').value)),
-      收文日期: toISODate(parseDate($('fRecv').value)),
-      廠商名稱: vendorFromRef($('fRef').value.trim())
-    });
-  }
-  return await copyText(name);
-}
-
 /* ---------- 工作日誌 ---------- */
 function todayKey(){
   const d=new Date();
@@ -514,7 +459,7 @@ function addHistory(doc, subj, extra){
 
 function renderHistory(){
   const box=$('hist'); box.innerHTML='';
-  if(!history.length){ box.innerHTML='<p class="hint" style="margin:8px 0 0">（還沒有紀錄：按「複製檔名」後會自動記在這裡）</p>'; return; }
+  if(!history.length){ box.innerHTML='<p class="hint" style="margin:8px 0 0">（還沒有紀錄：公文改名成功後會自動記在這裡）</p>'; return; }
   const today = todayKey();
   const groups = [];
   for(const h of history){
@@ -744,10 +689,10 @@ function commitHistoryToControlTable(items){
 }
 
 function renderCtrlSummary(){
-  const el = $('ctrlSummary2');     // 摘要只留在「公文管制表」頁；公文截圖命名頁不重複顯示
+  const el = $('ctrlSummary2');     // 摘要只留在「公文管制表」頁；公文自動命名頁不重複顯示
   if(!el) return;
   if(!controlRows.length){
-    el.innerHTML = '管制表目前沒有資料，可按「匯入管制表 Excel」讀入既有公文目錄，或到「公文截圖命名」頁用「複製檔名」累積後按「匯入管制表」。';
+    el.innerHTML = '管制表目前沒有資料，可按「匯入管制表 Excel」讀入既有公文目錄，或到「公文自動命名」頁用改名後的「工作日誌」累積後按「匯入管制表」。';
     return;
   }
   const overdue = controlRows.filter(r=>/^逾期/.test(r.是否逾期||''));
@@ -832,7 +777,7 @@ function renderDirGrid(){
     ? controlRows.filter(r=>(r.公文文號||'').includes(kw) || (r.主旨||'').includes(kw) || (r.廠商名稱||'').includes(kw))
     : controlRows;
   buildEditableTable('gridDir', DIR_DISPLAY_HEADERS, rows, {
-    emptyHint: kw ? '沒有符合搜尋的資料。' : '目前沒有資料，可按上面「匯入管制表 Excel」，或到「公文截圖命名」頁按「複製檔名」累積。',
+    emptyHint: kw ? '沒有符合搜尋的資料。' : '目前沒有資料，可按上面「匯入管制表 Excel」，或到「公文自動命名」頁改名後累積在工作日誌。',
     colWidths: ['8%','8%','6%','12%','35%','14%','12%'], delWidth:'5%',
     rowClass: row => /^逾期/.test(row.是否逾期||'') ? 'overdue' : '',
     onEdit: (row)=>{ row.guess=false; saveControlRows(); },   // 手動改過的列視為使用者已確認，之後「重新判斷逾期」不會覆蓋
@@ -940,19 +885,53 @@ async function exportControlXlsx(){
 }
 
 /* ---------- 事件 ---------- */
-document.addEventListener('paste',e=>{
-  const items=[...(e.clipboardData?.items||[])].filter(i=>i.type.startsWith('image/'));
-  if(!items.length) return;
-  e.preventDefault();
-  handleImage(items[items.length-1].getAsFile());     // 只處理最後一張
+/* PDF 來源：資料夾（可直接改原檔名，Chrome／Edge）、多選檔案、拖曳 */
+$('btnDir').addEventListener('click',async()=>{
+  if(!window.showDirectoryPicker){ setStatus('這個瀏覽器不支援直接改原檔名，請改用 Chrome 或 Edge；或用「選擇多個PDF」下載新名字的複本。','err'); return; }
+  let h;
+  try{ h = await showDirectoryPicker({mode:'readwrite'}); }catch(e){ return; }
+  dirHandle = h;
+  const entries = [];
+  for await(const [name,fh] of dirHandle.entries()){ if(fh.kind==='file' && /\.pdf$/i.test(name)) entries.push({name, handle:fh}); }
+  entries.sort((a,b)=>a.name.localeCompare(b.name,'zh-Hant'));
+  if(!entries.length){ setStatus('這個資料夾裡沒有 PDF 檔。','err'); return; }
+  processEntries(entries);
 });
-const drop=$('drop');
+function fromFiles(list){
+  dirHandle = null;
+  const entries = [...list].filter(f=>/\.pdf$/i.test(f.name)).map(f=>({name:f.name, file:f}));
+  if(!entries.length){ setStatus('沒有 PDF 檔。','err'); return; }
+  processEntries(entries);
+}
+const drop = $('drop');
 drop.addEventListener('click',()=>$('file').click());
-$('file').addEventListener('change',e=>{ handleImage(e.target.files[0]); e.target.value=''; });
+$('btnFiles').addEventListener('click',()=>$('file').click());
+$('file').addEventListener('change',e=>{ fromFiles(e.target.files); e.target.value=''; });
 ['dragover','dragenter'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('over');}));
 ['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('over');}));
-drop.addEventListener('drop',e=>{ const f=[...e.dataTransfer.files].filter(f=>f.type.startsWith('image/')).pop(); handleImage(f); });
-$('rerun').addEventListener('click',()=>recognize());
+drop.addEventListener('drop',e=>fromFiles(e.dataTransfer.files));
+
+$('tb').addEventListener('input',e=>{
+  const t = e.target, r = rows[t.dataset.i]; if(!r) return;
+  const k = t.dataset.k;
+  if(k==='sel'){ r.sel = t.checked; $('count').textContent = `已勾選 ${rows.filter(x=>x.sel).length} / ${rows.length}`; $('btnApply').disabled = $('btnLogOnly').disabled = !rows.some(x=>x.sel); return; }
+  r[k] = t.value;
+  if(k==='newName'){ r.manual = true; t.classList.toggle('need', !t.value.trim()); }
+  else{
+    r.manual = false; r.newName = buildName(r);
+    const nm = t.closest('tr').querySelector('[data-k=newName]'); nm.value = r.newName; nm.classList.toggle('need', !r.newName);
+    t.classList.toggle('need', !t.value.trim());
+  }
+});
+$('omitSame').addEventListener('input',refreshNames);
+$('btnAll').addEventListener('click',()=>{ const v = !rows.every(r=>r.sel); rows.forEach(r=>r.sel = v); renderRows(); });
+$('btnApply').addEventListener('click',applyRename);
+$('btnLogOnly').addEventListener('click',()=>{
+  let n = 0;
+  rows.filter(r=>r.sel).forEach(r=>{ if(logRow(r)){ n++; r.state = '已記日誌'; r.sel = false; } });
+  renderRows();
+  setStatus(n ? `已把 ${n} 筆記進工作日誌（沒有改檔名）。` : '勾選的檔案沒有公文文號或主旨，沒有記錄。', n?'ok':'err');
+});
 $('clearHist').addEventListener('click',()=>{
   if(!history.length) return;
   if(!confirm('確定要清空全部工作日誌紀錄嗎？這個動作無法復原。')) return;
@@ -975,7 +954,7 @@ function forceRecompute(){
   renderDirGrid();
   setStatus('已重新判斷逾期狀態。','ok');
 }
-/* ---------- 頁面切換（公文截圖命名 / 公文管制表） ---------- */
+/* ---------- 頁面切換（公文自動命名 / 公文管制表） ---------- */
 function setNav(which){
   $('navA').setAttribute('aria-pressed', which==='A');
   $('navB').setAttribute('aria-pressed', which==='B');
@@ -1036,15 +1015,7 @@ $('exportXlsx2').addEventListener('click',async()=>{
 });
 $('recompute2').addEventListener('click', forceRecompute);
 
-['fSend','fRecv','fRef','fDoc','fAtt','fSubj','omitSame'].forEach(id=>$(id).addEventListener('input',render));
-CHECK_IDS.forEach(id=>$(id).addEventListener('input',()=>{ if(ocrDone) markMissing(); }));
-$('noise').addEventListener('input',()=>{ store.set('gw_noise',$('noise').value); render(); touch(); });
-$('m1').onclick=()=>setMode(1);
-$('m2').onclick=()=>setMode(2);
-$('copy').onclick=async()=>{
-  const ok = await copyAndLog();
-  $('copy').textContent=ok?'已複製 ✓':'複製失敗，請手動選取'; setTimeout(()=>$('copy').textContent='複製檔名',1400);
-};
+$('noise').addEventListener('input',()=>{ store.set('gw_noise',$('noise').value); refreshNames(); touch(); });
 
 /* ---------- Google 雲端同步（Drive appDataFolder），跟「報表進度小幫手」同一套做法 ----------
  * 同步整包：工作日誌、公文目錄、逾期規定、逾期扣罰、廠商對照、贅詞清單。
@@ -1129,7 +1100,7 @@ function takeRemote(rem){
   if(Array.isArray(rem.penalty)){ ctrlPenalty=rem.penalty; store.set('gw_penalty',JSON.stringify(ctrlPenalty)); }
   if(rem.vendorMap && typeof rem.vendorMap==='object'){ vendorMap=rem.vendorMap; store.set('gw_vendormap',JSON.stringify(vendorMap)); }
   store.set('gw_mod',String(rem.updated)); store.set('gw_last',String(rem.updated));
-  render(); renderHistory(); renderCtrlSummary(); renderDirGrid(); renderRuleGrid(); renderPenaltyGrid();
+  refreshNames(); renderHistory(); renderCtrlSummary(); renderDirGrid(); renderRuleGrid(); renderPenaltyGrid();
 }
 async function syncNow(){
   if(syncing||!gOK()) return; syncing=true; clearTimeout(pushT);
@@ -1175,7 +1146,6 @@ window.addEventListener('load',()=>{
 
 /* ---------- 初始化 ---------- */
 $('noise').value = store.get('gw_noise', DEFAULT_NOISE.join('\n'));
-setMode(2);
 renderHistory();
 renderCtrlSummary();
 setSub('dir');
