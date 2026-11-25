@@ -706,7 +706,13 @@ function renderCtrlSummary(){
   el.innerHTML = html;
 }
 
-async function loadXLSX(){ await loadScript('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js', ()=>window.XLSX); }
+async function loadXLSX(){
+  if(window.XLSX) return;
+  for(const u of ['./lib/xlsx.full.min.js','https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js']){    // 優先用本站檔案，公司網路擋外部網站也能用
+    try{ await loadScript(u, ()=>window.XLSX); return; }catch(e){}
+  }
+  throw new Error('無法載入 Excel 元件，請確認網路連線');
+}
 
 /* ---------- 公文管制表頁：逾期規定／逾期扣罰（跟公文目錄一樣存在本機瀏覽器，不內建進程式、不進公開 repo） ---------- */
 const RULE_HEADERS = ['項目（文件/資料類型）','期限規定','契約位置（條．項．款／目）','扣罰依據與備註'];
