@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>公文自動命名及管制系統</title>
+<title>文件自動命名及管制系統</title>
 <style>
 :root{
   --bg:#f5f6f8; --card:#fff; --ink:#1c2330; --sub:#5d6778; --line:#dde1e8;
@@ -81,13 +81,13 @@ table.sheet tr.overdue td{background:rgba(192,57,43,.08)}
 <body>
 <div class="wrap" id="outerWrap">
   <div class="seg nav" role="group" aria-label="頁面">
-    <button id="navA" aria-pressed="true">公文自動命名</button>
-    <button id="navB" aria-pressed="false">公文管制表</button>
+    <button id="navA" aria-pressed="true">文件自動命名</button>
+    <button id="navB" aria-pressed="false">文件管制表</button>
   </div>
 
 <section id="pageA">
-  <h1>公文自動命名及管制系統</h1>
-  <p class="lead">選一個放公文 PDF 的資料夾，程式直接讀每份 PDF 第一頁的文字（不用截圖、不用 OCR），依「發文日(收訖日)-發文字號-公文文號-精簡主旨」產生檔名，核對後一次把原檔改名。檔案不會上傳也不用下載，全程在這台電腦的瀏覽器處理。改名成功的公文會自動記進下方工作日誌，確認後再按「匯入管制表」。</p>
+  <h1>文件自動命名及管制系統</h1>
+  <p class="lead">選一個放文件 PDF 的資料夾，程式直接讀每份 PDF 第一頁的文字（不用截圖、不用 OCR），依「發文日(收訖日)-發文字號-文號-精簡主旨」產生檔名，核對後一次把原檔改名。檔案不會上傳也不用下載，全程在這台電腦的瀏覽器處理。改名成功的檔案會自動記進下方工作日誌，確認後再按「匯入管制表」。</p>
 
   <div class="card">
     <div class="gridtools">
@@ -105,7 +105,7 @@ table.sheet tr.overdue td{background:rgba(192,57,43,.08)}
     <div id="listBox" hidden>
       <div class="gridtools" style="margin-top:12px">
         <button type="button" class="primary" id="btnApply" style="margin-top:0" disabled>套用改名</button>
-        <button type="button" class="ghost" id="btnLogOnly" title="不改檔名，只把勾選的公文記進工作日誌">只記進工作日誌（不改名）</button>
+        <button type="button" class="ghost" id="btnLogOnly" title="不改檔名，只把勾選的檔案記進工作日誌">只記進工作日誌（不改名）</button>
         <button type="button" class="ghost" id="btnAll">全選／取消</button>
         <span class="hint" id="count"></span>
       </div>
@@ -124,7 +124,7 @@ table.sheet tr.overdue td{background:rgba(192,57,43,.08)}
       <textarea id="noise"></textarea>
       <button type="button" class="ghost" id="btnRename" style="margin-top:6px" title="用目前的贅詞清單，把上面清單裡所有檔案的新檔名重新產生一次（你手動改過的也會被重新產生）">重新命名</button>
 
-      <label style="margin-top:16px">跨裝置同步（工作日誌、公文管制表、逾期規定、逾期扣罰、贅詞清單全部一起同步）</label>
+      <label style="margin-top:16px">跨裝置同步（工作日誌、文件管制表、逾期規定、逾期扣罰、贅詞清單全部一起同步）</label>
       <button class="ghost" id="btnG" type="button" style="margin-top:4px">Google 登入同步</button>
       <div class="status" id="syncStatus" style="color:var(--sub)"></div>
       <details id="gset" style="margin-top:8px">
@@ -143,7 +143,7 @@ table.sheet tr.overdue td{background:rgba(192,57,43,.08)}
 
   <div class="card" style="margin-top:16px">
     <details open style="margin-top:0">
-      <summary>工作日誌（改名成功的公文會記在這裡；確認、刪掉不要的之後按「匯入管制表」存進公文管制表，進階編輯請到「公文管制表」頁）</summary>
+      <summary>工作日誌（改名成功的檔案會記在這裡；確認、刪掉不要的之後按「匯入管制表」存進文件管制表，進階編輯請到「文件管制表」頁）</summary>
 
       <input type="file" id="importFile" accept=".xlsx,.xls" hidden>
 
@@ -156,11 +156,11 @@ table.sheet tr.overdue td{background:rgba(192,57,43,.08)}
 </section>
 
 <section id="pageB" hidden>
-  <h1>公文管制表</h1>
-  <p class="lead">公文目錄、逾期規定、逾期扣罰，三個分頁都能直接點儲存格編輯；可匯入/匯出跟原本「公文管制表.xlsx」相同格式的 Excel。資料只存在這台電腦的瀏覽器裡，不會上傳到任何伺服器。</p>
+  <h1>文件管制表</h1>
+  <p class="lead">文件目錄、逾期規定、逾期扣罰，三個分頁都能直接點儲存格編輯；可匯入/匯出跟原本「公文管制表.xlsx」相同格式的 Excel。資料只存在這台電腦的瀏覽器裡，不會上傳到任何伺服器。</p>
 
   <div class="seg" role="group" aria-label="管制表分頁">
-    <button id="subDir" aria-pressed="true">公文目錄</button>
+    <button id="subDir" aria-pressed="true">文件目錄</button>
     <button id="subRule" aria-pressed="false">逾期規定</button>
     <button id="subPenalty" aria-pressed="false">逾期扣罰</button>
   </div>
@@ -170,7 +170,7 @@ table.sheet tr.overdue td{background:rgba(192,57,43,.08)}
     <button type="button" id="exportXlsx2" class="ghost">匯出管制表 Excel（三個分頁一起存）</button>
     <button type="button" id="recompute2" class="ghost">重新判斷逾期</button>
     <span class="sp"></span>
-    <input type="text" id="dirFilter" placeholder="搜尋公文文號／主旨／廠商…" hidden>
+    <input type="text" id="dirFilter" placeholder="搜尋文號／主旨／廠商…" hidden>
   </div>
   <div class="status" id="status2"></div>
   <p class="hint" id="ctrlSummary2" style="margin:0 0 10px"></p>
@@ -186,7 +186,7 @@ table.sheet tr.overdue td{background:rgba(192,57,43,.08)}
   <div id="tabPenalty" hidden>
     <div class="gridtools">
       <button type="button" id="addPenaltyRow" class="ghost">＋ 新增一列</button>
-      <button type="button" id="fillPenalty" class="ghost">從公文目錄帶入逾期清單</button>
+      <button type="button" id="fillPenalty" class="ghost">從文件目錄帶入逾期清單</button>
     </div>
     <div id="gridPenalty"></div>
   </div>
@@ -458,7 +458,7 @@ function addHistory(doc, subj, extra){
 
 function renderHistory(){
   const box=$('hist'); box.innerHTML='';
-  if(!history.length){ box.innerHTML='<p class="hint" style="margin:8px 0 0">（還沒有紀錄：公文改名成功後會自動記在這裡）</p>'; return; }
+  if(!history.length){ box.innerHTML='<p class="hint" style="margin:8px 0 0">（還沒有紀錄：檔案改名成功後會自動記在這裡）</p>'; return; }
   const today = todayKey();
   const groups = [];
   for(const h of history){
@@ -472,7 +472,7 @@ function renderHistory(){
     const label=document.createElement('b');
     label.textContent = (g.date===today ? '今天 ' : '') + dateLabel(g.date) + `（${g.items.length} 筆）`;
     const importBtn=document.createElement('button'); importBtn.className='ghost'; importBtn.textContent='匯入管制表';
-    importBtn.title='把這天目前還留著的項目（已刪掉不要的）寫進公文管制表';
+    importBtn.title='把這天目前還留著的項目（已刪掉不要的）寫進文件管制表';
     importBtn.onclick=()=>{
       const n = commitHistoryToControlTable(g.items);
       importBtn.textContent = n ? `已匯入 ${n} 筆` : '沒有可匯入的項目';
@@ -691,7 +691,7 @@ function renderCtrlSummary(){
   const el = $('ctrlSummary2');     // 摘要只留在「公文管制表」頁；公文自動命名頁不重複顯示
   if(!el) return;
   if(!controlRows.length){
-    el.innerHTML = '管制表目前沒有資料，可按「匯入管制表 Excel」讀入既有公文目錄，或到「公文自動命名」頁用改名後的「工作日誌」累積後按「匯入管制表」。';
+    el.innerHTML = '管制表目前沒有資料，可按「匯入管制表 Excel」讀入既有文件目錄，或到「文件自動命名」頁用改名後的「工作日誌」累積後按「匯入管制表」。';
     return;
   }
   const overdue = controlRows.filter(r=>/^逾期/.test(r.是否逾期||''));
@@ -782,7 +782,7 @@ function renderDirGrid(){
     ? controlRows.filter(r=>(r.公文文號||'').includes(kw) || (r.主旨||'').includes(kw) || (r.廠商名稱||'').includes(kw))
     : controlRows;
   buildEditableTable('gridDir', DIR_DISPLAY_HEADERS, rows, {
-    emptyHint: kw ? '沒有符合搜尋的資料。' : '目前沒有資料，可按上面「匯入管制表 Excel」，或到「公文自動命名」頁改名後累積在工作日誌。',
+    emptyHint: kw ? '沒有符合搜尋的資料。' : '目前沒有資料，可按上面「匯入管制表 Excel」，或到「文件自動命名」頁改名後累積在工作日誌。',
     colWidths: ['8%','8%','6%','12%','35%','14%','12%'], delWidth:'5%',
     rowClass: row => /^逾期/.test(row.是否逾期||'') ? 'overdue' : '',
     onEdit: (row)=>{ row.guess=false; saveControlRows(); },   // 手動改過的列視為使用者已確認，之後「重新判斷逾期」不會覆蓋
@@ -803,7 +803,7 @@ function renderRuleGrid(){
 }
 function renderPenaltyGrid(){
   buildEditableTable('gridPenalty', PENALTY_HEADERS, ctrlPenalty, {
-    emptyHint: '目前沒有資料，可按上面「匯入管制表 Excel」、「從公文目錄帶入逾期清單」，或「＋ 新增一列」手動輸入。',
+    emptyHint: '目前沒有資料，可按上面「匯入管制表 Excel」、「從文件目錄帶入逾期清單」，或「＋ 新增一列」手動輸入。',
     colWidths: ['12%','6%','26%','6%','20%','16%','9%'], delWidth:'5%',
     onEdit: ()=>savePenalty(),
     onDelete: (row)=>{ const idx=ctrlPenalty.indexOf(row); if(idx>=0) ctrlPenalty.splice(idx,1); savePenalty(); renderPenaltyGrid(); }
@@ -866,7 +866,7 @@ async function importControlXlsx(file){
     if(penAdded) savePenalty();
   }
   renderDirGrid(); renderRuleGrid(); renderPenaltyGrid();
-  setStatus(`已匯入：公文目錄新增${added}／更新${updated}筆；逾期規定+${ruleAdded}筆；逾期扣罰+${penAdded}筆`,'ok');
+  setStatus(`已匯入：文件目錄新增${added}／更新${updated}筆；逾期規定+${ruleAdded}筆；逾期扣罰+${penAdded}筆`,'ok');
 }
 
 async function exportControlXlsx(){
@@ -932,7 +932,7 @@ $('btnLogOnly').addEventListener('click',()=>{
   let n = 0;
   rows.filter(r=>r.sel).forEach(r=>{ if(logRow(r)){ n++; r.state = '已記日誌'; r.sel = false; } });
   renderRows();
-  setStatus(n ? `已把 ${n} 筆記進工作日誌（沒有改檔名）。` : '勾選的檔案沒有公文文號或主旨，沒有記錄。', n?'ok':'err');
+  setStatus(n ? `已把 ${n} 筆記進工作日誌（沒有改檔名）。` : '勾選的檔案沒有文號或主旨，沒有記錄。', n?'ok':'err');
 });
 $('clearHist').addEventListener('click',()=>{
   if(!history.length) return;
@@ -1006,7 +1006,7 @@ $('fillPenalty').addEventListener('click',()=>{
     added++;
   });
   savePenalty(); renderPenaltyGrid();
-  setStatus(`已從公文目錄帶入 ${added} 筆逾期案件到逾期扣罰清單（金額/條文欄要自己填）。`,'ok');
+  setStatus(`已從文件目錄帶入 ${added} 筆逾期案件到逾期扣罰清單（金額/條文欄要自己填）。`,'ok');
 });
 
 $('importXlsx2').addEventListener('click',()=>$('importFile').click());
@@ -1119,7 +1119,7 @@ async function syncNow(){
       store.set('gw_mod',String(rem.updated)); store.set('gw_last',String(rem.updated));
     }
     else if(mod>last){
-      if(confirm('Google 雲端與這台電腦的公文管制資料不同。\n\n按「確定」＝用雲端版本取代這台電腦的內容\n按「取消」＝用這台電腦的內容覆蓋雲端')){ takeRemote(rem); msg='已從 Google 載入資料'; }
+      if(confirm('Google 雲端與這台電腦的文件管制資料不同。\n\n按「確定」＝用雲端版本取代這台電腦的內容\n按「取消」＝用這台電腦的內容覆蓋雲端')){ takeRemote(rem); msg='已從 Google 載入資料'; }
       else{ store.set('gw_mod',String(Date.now())); await gPush(); msg='已用這台的內容覆蓋雲端'; }
     }
     else{ takeRemote(rem); msg='已載入其他電腦的最新內容'; }
