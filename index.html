@@ -1122,23 +1122,40 @@ async function syncNow(){
   }catch(e){ setSync('同步失敗：'+(e.message||e),true); }
   finally{ syncing=false; updateBtn(); }
 }
-$('btnG').addEventListener('click',()=>{
+// Google 的登入元件只在真的需要時才載入（已登入過要自動續接、或使用者按下按鈕），
+// 不要一打開網頁就連 accounts.google.com——有些公司網路會擋 Google 登入/OAuth 連線，
+// 不用同步功能的人完全不該被這條連線影響到。
+function loadGoogleScript(){
+  return new Promise(res=>{
+    if(window.google && google.accounts) return res(true);
+    const sc=document.createElement('script'); sc.src='https://accounts.google.com/gsi/client'; sc.async=true;
+    sc.onload=()=>res(true); sc.onerror=()=>res(false);
+    document.head.appendChild(sc);
+  });
+}
+$('btnG').addEventListener('click',async()=>{
   if(store.get('gw_g','')==='1' && gOK()){
     if(!confirm('登出 Google 後，這台電腦不再自動同步（本機資料與雲端資料都保留）。確定登出？')) return;
     try{ google.accounts.oauth2.revoke(gTok); }catch(e){}
     gTok=null; store.set('gw_g',''); store.set('gw_gmail',''); setSync('已登出 Google 同步'); updateBtn();
-  }else gLogin(store.get('gw_g','')==='1'?'':'consent');
+    return;
+  }
+  setSync('連線 Google 元件中…');
+  const ok = await loadGoogleScript();
+  if(!ok){ setSync('無法連到 Google（accounts.google.com），可能被目前的網路擋住了，換個網路再試看看','err'); return; }
+  gLogin(store.get('gw_g','')==='1'?'':'consent');
 });
 $('cid').value = clientId();
 $('cidSave').addEventListener('click',()=>{ store.set('gw_cid',$('cid').value.trim()); gTC=null; setSync('已儲存用戶端 ID，請按「Google 登入同步」'); });
-function gBoot(){
-  updateBtn();
-  if(store.get('gw_g','')==='1' && clientId() && gInit()){ setSync('正在連線 Google…'); gTC.requestAccessToken({prompt:'none'}); }
+updateBtn();
+if(store.get('gw_g','')==='1'){   // 只有之前已經登入過的人，才需要在打開網頁時就自動連 Google 續用
+  window.addEventListener('load', async()=>{
+    const ok = await loadGoogleScript();
+    if(!ok){ setSync('無法連到 Google（accounts.google.com），這個網路可能擋住了 Google 登入連線','err'); updateBtn(); return; }
+    updateBtn();
+    if(clientId() && gInit()){ setSync('正在連線 Google…'); gTC.requestAccessToken({prompt:'none'}); }
+  });
 }
-window.addEventListener('load',()=>{
-  const sc=document.createElement('script'); sc.src='https://accounts.google.com/gsi/client'; sc.async=true; sc.onload=gBoot;
-  document.head.appendChild(sc); updateBtn();
-});
 
 /* ---------- 初始化 ---------- */
 $('noise').value = store.get('gw_noise', DEFAULT_NOISE.join('\n'));
