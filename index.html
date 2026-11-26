@@ -352,8 +352,22 @@ async function loadPdfJs(){
   }
   throw new Error('無法載入 PDF 讀取元件，請確認網路連線');
 }
+// 單機免安裝版：cmaps 字型對照表也內嵌成 base64（window.__cmaps），不用 fetch 讀取 cmaps/ 資料夾；
+// 純用 file:// 開啟本機 HTML 時，Chrome 對 file:// 之間的 fetch 會擋下來，內嵌才能保證離線也能用。
+class InlineCMapReaderFactory{
+  async fetch({name}){
+    const b64 = window.__cmaps && window.__cmaps[name];
+    if(!b64) throw new Error('找不到內嵌的 cmap：'+name);
+    const bin = atob(b64), arr = new Uint8Array(bin.length);
+    for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i);
+    return {cMapData:arr, compressionType:1};   // 1 = CMapCompressionType.BINARY（對應 .bcmap）
+  }
+}
 async function firstPageText(buf){
-  const doc = await pdfjsLib.getDocument({data:buf, cMapUrl:pdfBase+'cmaps/', cMapPacked:true}).promise;
+  const opt = window.__cmaps
+    ? {data:buf, CMapReaderFactory:InlineCMapReaderFactory}
+    : {data:buf, cMapUrl:pdfBase+'cmaps/', cMapPacked:true};
+  const doc = await pdfjsLib.getDocument(opt).promise;
   const tc = await (await doc.getPage(1)).getTextContent();
   // 左邊裝訂線的「. 裝 訂 線」是單字元且 x 很小，會混進主旨，先濾掉
   const items = tc.items.filter(i=>i.str && i.str.trim()!=='' && !(i.str.trim().length<=1 && i.transform[4]<60))
@@ -1218,6 +1232,41 @@ $('noise').value = store.get('gw_noise', DEFAULT_NOISE.join('\n'));
 renderHistory();
 renderCtrlSummary();
 setSub('dir');
+</script>
+<script>
+/* ---------- 單機版／備份 ---------- */
+(function(){
+  const PRE='gw_', SKIP=['gw_g','gw_gmail','gw_last','gw_mod','gw_t'], OFF=location.protocol==='file:';
+  const bar=document.createElement('div');
+  bar.style.cssText='display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:4px 0 12px';
+  bar.innerHTML='<button type="button" id="bkOut" style="padding:6px 12px;border:1px solid #888;border-radius:8px;background:#fff;color:#000;cursor:pointer;font:inherit;font-size:14px">備份全部資料</button>'
+    +'<button type="button" id="bkIn" style="padding:6px 12px;border:1px solid #888;border-radius:8px;background:#fff;color:#000;cursor:pointer;font:inherit;font-size:14px">還原備份</button>'
+    +'<input type="file" id="bkFile" accept=".json" hidden><span id="bkNote" style="font-size:13px;color:#555"></span>';
+  const h=document.querySelector('h1'); (h||document.body.firstChild).insertAdjacentElement('afterend',bar);
+  const $b=id=>document.getElementById(id);
+  if(OFF){
+    const st=document.createElement('style'); st.textContent='#btnG,#gset,#syncBanner,#btnDiag,#syncTop,#syncStatus{display:none!important}'; document.head.appendChild(st);
+    $b('bkNote').textContent='單機版：資料存在這台電腦的瀏覽器裡，換電腦請用「備份全部資料」→ 在新電腦「還原備份」。';
+  }
+  $b('bkOut').onclick=()=>{
+    const data={}; for(let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); if(k.startsWith(PRE)&&!SKIP.includes(k)) data[k]=localStorage.getItem(k); }
+    if(!Object.keys(data).length){ alert('目前沒有可備份的資料。'); return; }
+    const t=new Date(), p=n=>String(n).padStart(2,'0');
+    const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([JSON.stringify({app:'公文命名管制',time:t.toISOString(),data})],{type:'application/json'}));
+    a.download=`公文命名管制_備份_${t.getFullYear()}${p(t.getMonth()+1)}${p(t.getDate())}_${p(t.getHours())}${p(t.getMinutes())}.json`; a.click();
+  };
+  $b('bkIn').onclick=()=>$b('bkFile').click();
+  $b('bkFile').addEventListener('change',async e=>{
+    const f=e.target.files[0]; e.target.value=''; if(!f) return;
+    try{
+      const j=JSON.parse(await f.text());
+      if(j.app!=='公文命名管制'||!j.data) throw new Error('這不是本工具的備份檔');
+      if(!confirm(`要用「${f.name}」覆蓋這台電腦目前的資料嗎？`)) return;
+      for(const [k,v] of Object.entries(j.data)) if(k.startsWith(PRE)) localStorage.setItem(k,v);
+      location.reload();
+    }catch(err){ alert('還原失敗：'+(err.message||err)); }
+  });
+})();
 </script>
 </body>
 </html>
